@@ -1,0 +1,18 @@
+{
+  "device": {
+    "input_device1":1,
+    "input_device2":4,
+    "output_device":9
+  },
+  "vc_conf": {
+    "frame_length":16384,
+    "overlap":1024,
+    "source_id":104,
+    "target_id":105
+  },
+  "path": {
+    "json":"D:\\GitRepository\\RT-MMVC_Client\\config.json",
+    "model":"D:\\GitRepository\\RT-MMVC_Client\\G_348000.pth",
+    "noise":"D:\\GitRepository\\RT-MMVC_Client\\noise.wav"
+  }
+}
