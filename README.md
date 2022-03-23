@@ -30,7 +30,8 @@ https://github.com/isletennos/RT-MMVC_Trainer
 
 ### 2. 環境によるノイズ音を取得
 「rec_environmental_noise.exe」を実行します。  
-モデルを学習したときに設定したサンプリングレートを設定します。(RT-MMVC_Trainerの設定を変えていなければ24000です)  
+モデルを学習したときに設定したサンプリングレートを設定します。  
+(RT-MMVC_Trainerの設定を変えていなければ24000です)  
 ノイズの録音が完了するまで、マイクに話しかけたり等しないで、待ちます。  
 「noise.wav」が実行ファイルと同じディレクトリに出力されます。  
 
@@ -46,13 +47,16 @@ https://github.com/isletennos/RT-MMVC_Trainer
   },
 ```
 "input_device1"には、実際に声を変換するマイクなどのオーディオデバイスのIDを指定します。  
-「audio_device_list.txt」にオーディオデバイス名とそのデバイスに対応するIDがリスト化されています。
-※同名のオーディオデバイスがリストに複数ある場合、基本的に若番を指定すればいいはずです。たぶん…
+「audio_device_list.txt」にオーディオデバイス名とそのデバイスに対応するIDがリスト化されています。  
+※同名のオーディオデバイスがリストに複数ある場合、基本的に若番を指定すればいいはずです。たぶん… 
+
 
 "input_device2"は、声質変換しない入力を一緒に流したい場合に利用します。  
 音声の遅延に合わせてBGMを出力することができます。
 
+
 "output_device"には出力するオーディオデバイスを指定します。
+
 
 ####  3.2. VCのコンフィグ
 「myprofile.json」の下記4項目を設定します。
@@ -64,9 +68,11 @@ https://github.com/isletennos/RT-MMVC_Trainer
     "target_id":105
   },
 ```
-"frame_length" および "overlap" のパラメータはソフトウェア上での音声の遅延時間に影響します。
+"frame_length" および "overlap" のパラメータはソフトウェア上での音声の遅延時間に影響します。  
 このソフトウェア上で発生する遅延時間は  
-[("frame_length" - "overlap") / サンプリングレート]秒  
+```
+[("frame_length" - "overlap") / サンプリングレート]秒
+```
 になります。  
 "frame_length"は4096×nの値を入力してください。  
 "overlap"は1024以上の値を指定することを推奨します。  
