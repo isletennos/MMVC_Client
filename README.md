@@ -109,7 +109,7 @@ UserWarning: stft will soon require the return_complex parameter be given for re
 なにか不明点があればお気軽にご連絡ください。
 ## Reference
 https://arxiv.org/abs/2106.06103  
-https://github.com/jaywalnut310/vits
+https://github.com/jaywalnut310/vits  
 https://github.com/timsainb/noisereduce
 ## Author
 Isle Tennos  
