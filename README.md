@@ -7,6 +7,7 @@ AIを使ったリアルタイムボイスチェンジャー
 AIを使ったリアルタイムボイスチェンジャー「RT-MMVC(RealTime-Many to Many Voice Conversion)」  
 の本体です。  
 RT-MMVC_Trainerで学習したモデルを使ってリアルタイムでVCを行います。  
+[RT-MMVC_Trainer](https://github.com/isletennos/RT-MMVC_Trainer)
 ## concept
 「簡単」「だれでも」「好きな声に」「リアルタイムで」
 ## Demo
