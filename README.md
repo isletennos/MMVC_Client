@@ -16,7 +16,8 @@ RT-MMVC_Trainerで学習したモデルを使ってリアルタイムでVCを行
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからGPU版 or CPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
-
+[RT-MMVC(GPU ver)](https://drive.google.com/file/d/1C3mWvNsS0G9qQJKuku2tzF1ju0gqaB9k/view?usp=sharing)  
+[RT-MMVC(CPU_ver)](https://drive.google.com/file/d/1jDKLF8rQqvRpb_Nuwv-l9ou4a6EiYhiF/view?usp=sharing)
 ### pythonを利用する方
 このリポジトリをダウンロードして、展開してください。  
 また、下記.exeの実行を.pyの実行に置き換えて実行してください。
