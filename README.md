@@ -1,25 +1,25 @@
-RT-MMVC_Client
+MMVC_Client
 ====
 
 AIを使ったリアルタイムボイスチェンジャー
 
 ## Description
-AIを使ったリアルタイムボイスチェンジャー「RT-MMVC(RealTime-Many to Many Voice Conversion)」  
+AIを使ったリアルタイムボイスチェンジャー「MMVC(RealTime-Many to Many Voice Conversion)」  
 の本体です。  
-RT-MMVC_Trainerで学習したモデルを使ってリアルタイムでVCを行います。
-## RT-MMVC_Trainer
-https://github.com/isletennos/RT-MMVC_Trainer
+MMVC_Trainerで学習したモデルを使ってリアルタイムでVCを行います。
+## MMVC_Trainer
+https://github.com/isletennos/MMVC_Trainer
 ## concept
 「簡単」「だれでも」「好きな声に」「リアルタイムで」
 ## Demo
 作成中
 ## Requirement
-・RT-MMVC_Trainerで学習したモデルとそのコンフィグ  
+・MMVC_Trainerで学習したモデルとそのコンフィグ  
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからGPU版 or CPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
-[RT-MMVC(GPU ver)](https://drive.google.com/file/d/1C3mWvNsS0G9qQJKuku2tzF1ju0gqaB9k/view?usp=sharing)  
-[RT-MMVC(CPU_ver)](https://drive.google.com/file/d/1jDKLF8rQqvRpb_Nuwv-l9ou4a6EiYhiF/view?usp=sharing)
+[MMVC(GPU ver)](https://drive.google.com/file/d/1C3mWvNsS0G9qQJKuku2tzF1ju0gqaB9k/view?usp=sharing)  
+[MMVC(CPU_ver)](https://drive.google.com/file/d/1jDKLF8rQqvRpb_Nuwv-l9ou4a6EiYhiF/view?usp=sharing)
 ### pythonを利用する方
 このリポジトリをダウンロードして、展開してください。  
 また、下記.exeの実行を.pyの実行に置き換えて実行してください。
@@ -31,7 +31,7 @@ https://github.com/isletennos/RT-MMVC_Trainer
 ### 2. 環境によるノイズ音を取得
 「rec_environmental_noise.exe」を実行します。  
 モデルを学習したときに設定したサンプリングレートを設定します。  
-(RT-MMVC_Trainerの設定を変えていなければ24000です)  
+(MMVC_Trainerの設定を変えていなければ24000です)  
 ノイズの録音が完了するまで、マイクに話しかけたり等しないで、待ちます。  
 「noise.wav」が実行ファイルと同じディレクトリに出力されます。  
 
@@ -79,19 +79,19 @@ https://github.com/isletennos/RT-MMVC_Trainer
 
 "source_id"には自分の声の話者IDを入力してください  
 "target_id"には変換先の声の話者IDを入力してください  
-話者IDについては、RT-MMVC_Trainerのfilelistsディレクトリに「xxxx_Correspondence.txt」に音声データと話者IDの対応表があります。
+話者IDについては、MMVC_Trainerのfilelistsディレクトリに「xxxx_Correspondence.txt」に音声データと話者IDの対応表があります。
 
 ####  3.3. 必要なファイルのパスの指定
 「myprofile.json」の下記3項目を設定します。
 ```
   "path": {
-    "json":"D:\\GitRepository\\RT-MMVC_Client\\config.json",
-    "model":"D:\\GitRepository\\RT-MMVC_Client\\G_348000.pth",
-    "noise":"D:\\GitRepository\\RT-MMVC_Client\\noise.wav"
+    "json":"D:\\GitRepository\\MMVC_Client\\config.json",
+    "model":"D:\\GitRepository\\MMVC_Client\\G_348000.pth",
+    "noise":"D:\\GitRepository\\MMVC_Client\\noise.wav"
   }
 ```
 "json"には学習に使ったコンフィグファイルのパスを  
-"model"にはRT-MMVC_Trainerで学習したモデルのパスを  
+"model"にはMMVC_Trainerで学習したモデルのパスを  
 "noise"には 2. 環境によるノイズ音を取得 で作成した「noise.wav」のパスを  
 
 ### 4. ソフトウェアの起動
