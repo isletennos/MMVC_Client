@@ -10,7 +10,7 @@ import torch
 import utils
 from models import SynthesizerTrn
 from text.symbols import symbols
-from Shifter.shifter import Shifter
+# from Shifter.shifter import Shifter
 import soundfile as sf
 #noice reduce
 import noisereduce as nr
