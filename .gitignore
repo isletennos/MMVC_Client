@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 
 # C extensions
-*.so
 
 # Distribution / packaging
 .Python
@@ -127,3 +126,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+old/
+.hidstory/
+rt-mmvc_client_CPU/rt-mmvc_client_CPU/*
+rt-mmvc_client_GPU/rt-mmvc_client_GPU/*
+audio_device_list.txt
+*.rar
+*.exe
