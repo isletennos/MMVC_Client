@@ -1,6 +1,6 @@
 {
   "device": {
-    "input_device1":6,
+    "input_device1":1,
     "input_device2":false,
     "output_device":12
   },
