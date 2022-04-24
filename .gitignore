@@ -128,7 +128,7 @@ dmypy.json
 .pyre/
 
 old/
-.hidstory/
+.history/
 rt-mmvc_client_CPU/rt-mmvc_client_CPU/*
 rt-mmvc_client_GPU/rt-mmvc_client_GPU/*
 audio_device_list.txt
