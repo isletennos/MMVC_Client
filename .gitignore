@@ -134,3 +134,9 @@ rt-mmvc_client_GPU/rt-mmvc_client_GPU/*
 audio_device_list.txt
 *.rar
 *.exe
+*.build/
+*.dist/
+temp/
+isle/
+noise.wav
+use_exe.ico

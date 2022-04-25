@@ -8,7 +8,8 @@
     "frame_length":8192,
     "overlap":1024,
     "source_id":105,
-    "target_id":106
+    "target_id":106,
+    "thread_lim":4
   },
   "path": {
     "json":"D:\\GitRepository\\RT-MMVC_Client\\isle\\jsontest.json",

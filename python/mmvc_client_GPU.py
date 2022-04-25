@@ -1,6 +1,5 @@
 # -*- coding:utf-8 -*-
 
-import numpy as np
 import pyaudio
 
 #voice conversion
@@ -15,6 +14,10 @@ import soundfile as sf
 #noice reduce
 import noisereduce as nr
 import json
+#use thread limit
+import os
+#use logging
+from logging import getLogger
 
 class Hyperparameters():
     CHANNELS = 1 #モノラル
@@ -422,8 +425,14 @@ if __name__ == '__main__':
             continue
 
     params = config_get(profile_path)
+    #CPU 負荷の制御
+    print(type(params.vc_conf.thread_lim))
+    if isinstance(params.vc_conf.thread_lim, int):
+        os.environ["OMP_NUM_THREADS"] = str(params.vc_conf.thread_lim)
+    import numpy as np
+    
     vc_main = Hyperparameters()
-    print(type(params.path.json))
+
     print(params.path.json)
     vc_main.set_profile(params)
     vc_main.vc_run()
