@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 import torch.utils.data
+import tqdm
 
 import commons 
 from mel_processing import spectrogram_torch
@@ -176,7 +177,7 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
 
         self.add_blank = hparams.add_blank
         self.min_text_len = getattr(hparams, "min_text_len", 1)
-        self.max_text_len = getattr(hparams, "max_text_len", 190)
+        self.max_text_len = getattr(hparams, "max_text_len", 1000)
 
         random.seed(1234)
         random.shuffle(self.audiopaths_sid_text)
@@ -193,7 +194,8 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
 
         audiopaths_sid_text_new = []
         lengths = []
-        for audiopath, sid, text in self.audiopaths_sid_text:
+        
+        for audiopath, sid, text in tqdm.tqdm(self.audiopaths_sid_text):
             if self.min_text_len <= len(text) and len(text) <= self.max_text_len:
                 audiopaths_sid_text_new.append([audiopath, sid, text])
                 lengths.append(os.path.getsize(audiopath) // (2 * self.hop_length))
@@ -209,22 +211,26 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
         spec, wav = self.get_audio(audiopath)
         sid = self.get_sid(sid)
         return (text, spec, wav, sid)
-
+        
+    @retry(exceptions=(PermissionError), tries=100, delay=10)
     def get_audio(self, filename):
         audio, sampling_rate = load_wav_to_torch(filename)
         # print(sampling_rate)
         # print(self.sampling_rate)
         # print(filename)
-        if sampling_rate != self.sampling_rate:
-            raise ValueError("{} {} SR doesn't match target {} SR".format(
-                sampling_rate, self.sampling_rate))
+        try:
+            if sampling_rate != self.sampling_rate:
+                raise ValueError("[Error] Exception: source {} SR doesn't match target {} SR".format(
+                    sampling_rate, self.sampling_rate))
+        except ValueError as e:
+            print(e)
+            exit()
         audio_norm = audio / self.max_wav_value
         audio_norm = audio_norm.unsqueeze(0)
         spec_filename = filename.replace(".wav", ".spec.pt")
         spec_file_path =os.path.dirname(spec_filename) + "/spec/"+ os.path.basename(spec_filename)
         if os.path.exists(spec_file_path):
             #spec = torch.load(spec_file_path)
-
             if os.path.isdir(os.path.dirname(spec_filename) + "/spec") == False:
               os.mkdir(os.path.dirname(spec_filename) + "/spec")
             spec = spectrogram_torch(audio_norm, self.filter_length,
@@ -349,7 +355,7 @@ class DistributedBucketSampler(torch.utils.data.distributed.DistributedSampler):
             idx_bucket = self._bisect(length)
             if idx_bucket != -1:
                 buckets[idx_bucket].append(i)
-  
+
         for i in range(len(buckets) - 1, 0, -1):
             if len(buckets[i]) == 0:
                 buckets.pop(i)
@@ -364,45 +370,52 @@ class DistributedBucketSampler(torch.utils.data.distributed.DistributedSampler):
         return buckets, num_samples_per_bucket
   
     def __iter__(self):
-      # deterministically shuffle based on epoch
-      g = torch.Generator()
-      g.manual_seed(self.epoch)
+        # deterministically shuffle based on epoch
+        g = torch.Generator()
+        g.manual_seed(self.epoch)
   
-      indices = []
-      if self.shuffle:
-          for bucket in self.buckets:
-              indices.append(torch.randperm(len(bucket), generator=g).tolist())
-      else:
-          for bucket in self.buckets:
-              indices.append(list(range(len(bucket))))
+        indices = []
+        if self.shuffle:
+            for bucket in self.buckets:
+                indices.append(torch.randperm(len(bucket), generator=g).tolist())
+        else:
+            for bucket in self.buckets:
+                indices.append(list(range(len(bucket))))
   
-      batches = []
-      for i in range(len(self.buckets)):
-          bucket = self.buckets[i]
-          len_bucket = len(bucket)
-          ids_bucket = indices[i]
-          num_samples_bucket = self.num_samples_per_bucket[i]
+        batches = []
+        for i in range(len(self.buckets)):
+            bucket = self.buckets[i]
+            len_bucket = len(bucket)
+            ids_bucket = indices[i]
+            num_samples_bucket = self.num_samples_per_bucket[i]
+
+            try:
+                if len_bucket == 0:
+                    raise ValueError("[Error] Exception: length of buckets {} is 0".format(i))
+            except ValueError as e:
+                print(e)
+                exit()
+
+            # add extra samples to make it evenly divisible
+            rem = num_samples_bucket - len_bucket
+            ids_bucket = ids_bucket + ids_bucket * (rem // len_bucket) + ids_bucket[:(rem % len_bucket)]
+    
+            # subsample
+            ids_bucket = ids_bucket[self.rank::self.num_replicas]
+    
+            # batching
+            for j in range(len(ids_bucket) // self.batch_size):
+                batch = [bucket[idx] for idx in ids_bucket[j*self.batch_size:(j+1)*self.batch_size]]
+                batches.append(batch)
   
-          # add extra samples to make it evenly divisible
-          rem = num_samples_bucket - len_bucket
-          ids_bucket = ids_bucket + ids_bucket * (rem // len_bucket) + ids_bucket[:(rem % len_bucket)]
+        if self.shuffle:
+            batch_ids = torch.randperm(len(batches), generator=g).tolist()
+            batches = [batches[i] for i in batch_ids]
+        self.batches = batches
   
-          # subsample
-          ids_bucket = ids_bucket[self.rank::self.num_replicas]
-  
-          # batching
-          for j in range(len(ids_bucket) // self.batch_size):
-              batch = [bucket[idx] for idx in ids_bucket[j*self.batch_size:(j+1)*self.batch_size]]
-              batches.append(batch)
-  
-      if self.shuffle:
-          batch_ids = torch.randperm(len(batches), generator=g).tolist()
-          batches = [batches[i] for i in batch_ids]
-      self.batches = batches
-  
-      assert len(self.batches) * self.batch_size == self.num_samples
-      return iter(self.batches)
-  
+        assert len(self.batches) * self.batch_size == self.num_samples
+        return iter(self.batches)
+    
     def _bisect(self, x, lo=0, hi=None):
       if hi is None:
           hi = len(self.boundaries) - 1

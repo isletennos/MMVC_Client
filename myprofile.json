@@ -7,13 +7,12 @@
   "vc_conf": {
     "frame_length":8192,
     "overlap":1024,
-    "source_id":105,
-    "target_id":106,
-    "thread_lim":4
+    "source_id":107,
+    "target_id":100
   },
   "path": {
-    "json":"D:\\GitRepository\\RT-MMVC_Client\\isle\\jsontest.json",
-    "model":"D:\\GitRepository\\RT-MMVC_Client\\isle\\G_24000.pth",
-    "noise":"D:\\GitRepository\\RT-MMVC_Client\\noise.wav"
+    "json":"D:\\RT-MMVC_Client\\isle\\train_config_zundamon.json",
+    "model":"D:\\RT-MMVC_Client\\isle\\G_6000.pth",
+    "noise":"D:\\RT-MMVC_Client\\noise.wav"
   }
 }

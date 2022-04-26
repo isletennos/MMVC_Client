@@ -147,6 +147,10 @@ def get_hparams(init=True):
                       help='JSON file for configuration')
   parser.add_argument('-m', '--model', type=str, required=True,
                       help='Model name')
+  parser.add_argument('-fg', '--fine_tuning_g', type=str, default=None,
+                      help='If fine tuning, please specify model(G)')
+  parser.add_argument('-fd', '--fine_tuning_d', type=str, default=None,
+                      help='If fine tuning, please specify model(D)')
   
   args = parser.parse_args()
   model_dir = os.path.join("./logs", args.model)
@@ -165,6 +169,14 @@ def get_hparams(init=True):
     with open(config_save_path, "r") as f:
       data = f.read()
   config = json.loads(data)
+
+  #Added about fine tuning
+  if args.fine_tuning_g != None and args.fine_tuning_d != None:
+    config['fine_flag'] = True
+    config['fine_model_g'] = args.fine_tuning_g
+    config['fine_model_d'] = args.fine_tuning_d
+  else:
+    config['fine_flag'] = False
   
   hparams = HParams(**config)
   hparams.model_dir = model_dir
