@@ -18,7 +18,7 @@ https://github.com/isletennos/MMVC_Trainer
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからGPU版 or CPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
-[MMVC(GPU ver)](https://drive.google.com/file/d/1C3mWvNsS0G9qQJKuku2tzF1ju0gqaB9k/view?usp=sharing)  
+[MMVC(GPU ver) v1.2.0 サポート](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
 [MMVC(CPU_ver)](https://drive.google.com/file/d/1jDKLF8rQqvRpb_Nuwv-l9ou4a6EiYhiF/view?usp=sharing)
 ### pythonを利用する方
 このリポジトリをダウンロードして、展開してください。  
