@@ -14,5 +14,8 @@
     "json":"D:\\RT-MMVC_Client\\isle\\train_config_zundamon.json",
     "model":"D:\\RT-MMVC_Client\\isle\\G_6000.pth",
     "noise":"D:\\RT-MMVC_Client\\noise.wav"
+  },
+  "others": {
+    "use_nr":false
   }
 }

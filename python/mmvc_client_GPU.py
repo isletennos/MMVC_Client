@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 #use thread limit
 import os
+#os.environ["OMP_NUM_THREADS"] = "1"
 import pyaudio
 import numpy as np
 
@@ -31,6 +32,7 @@ class Hyperparameters():
     FLAME_LENGTH = None
     SOURCE_ID = None
     TARGET_ID = None
+    USE_NR = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -83,6 +85,9 @@ class Hyperparameters():
     def set_OVERLAP(self, value):
         Hyperparameters.OVERLAP = value
 
+    def set_USE_NR(self, value):
+        Hyperparameters.USE_NR = value
+
     def set_profile(self, profile):
         self.set_input_device_1(profile.device.input_device1)
         self.set_input_device_2(profile.device.input_device2)
@@ -94,6 +99,7 @@ class Hyperparameters():
         self.set_SOURCE_ID(profile.vc_conf.source_id)
         self.set_TARGET_ID(profile.vc_conf.target_id)
         self.set_OVERLAP(profile.vc_conf.overlap)
+        self.set_USE_NR(profile.others.use_nr)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -112,8 +118,10 @@ class Hyperparameters():
     def audio_trans_GPU(self, tdbm, input, net_g, noise_data):
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
+        #signal = torch.frombuffer(input, dtype=torch.float32)
         signal = signal / Hyperparameters.MAX_WAV_VALUE
-        signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
+        if Hyperparameters.USE_NR:
+            signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
         # any to many への取り組み(失敗)
         # f0を変えるだけでは枯れた声は直らなかった
         #f0trans = Shifter(Hyperparameters.SAMPLE_RATE, 1.75, frame_ms=20, shift_ms=10)
@@ -132,6 +140,7 @@ class Hyperparameters():
 
         audio1 = audio1 * Hyperparameters.MAX_WAV_VALUE
         audio1 = audio1.astype(np.int16).tobytes()
+
         return audio1
 
     def vc_run(self):
@@ -140,7 +149,10 @@ class Hyperparameters():
         net_g = self.launch_model()
         tdbm = Transform_Data_By_Model()
 
-        noise_data, noise_rate = sf.read(Hyperparameters.NOISE_FILE)
+        if Hyperparameters.USE_NR:
+            noise_data, noise_rate = sf.read(Hyperparameters.NOISE_FILE)
+        else:
+            noise_data = 0
 
         # audio stream voice
         #マイク
@@ -184,6 +196,7 @@ class Hyperparameters():
                             output=True)
 
         overlap = Hyperparameters.OVERLAP
+        #a = np.arange(overlap)/overlap
         a = np.arange(overlap)/overlap
         try:
             print("準備が完了しました。VC開始します。")
