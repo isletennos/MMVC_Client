@@ -6,16 +6,17 @@
   },
   "vc_conf": {
     "frame_length":8192,
+    "delay_flames":4096,
     "overlap":1024,
     "source_id":107,
     "target_id":100
   },
   "path": {
-    "json":"D:\\RT-MMVC_Client\\isle\\train_config_zundamon.json",
-    "model":"D:\\RT-MMVC_Client\\isle\\G_6000.pth",
-    "noise":"D:\\RT-MMVC_Client\\noise.wav"
+    "json":"D:\\GitRepository\\MMVC_Client\\brunch\\MMVC_Client_old\\isle\\train_config_zundamon.json",
+    "model":"D:\\GitRepository\\MMVC_Client\\brunch\\MMVC_Client_old\\isle\\G_6000.pth",
+    "noise":"D:\\GitRepository\\MMVC_Client\\brunch\\MMVC_Client_old\\noise.wav"
   },
   "others": {
-    "use_nr":false
+    "use_nr":true
   }
 }
