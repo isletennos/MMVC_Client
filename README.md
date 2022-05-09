@@ -20,6 +20,13 @@ https://github.com/isletennos/MMVC_Trainer
 下記URLからGPU版 or CPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
 [MMVC(GPU ver) v1.2.0 サポート](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
 [MMVC(CPU_ver) v1.2.0 サポート(現在非推奨)](https://drive.google.com/file/d/1KLqo_q-qbahPRzNo2kUhCqHqnb8lTjMJ/view?usp=sharing)
+#### 先行ver Client v0.2.0.0
+現在検証中の先行公開verです。このverからClientのverを付番します。    
+遅延が大幅に削減＆CPU負荷が軽減されています。  
+品質の劣化等感じた方がいましたらお手数ですが、discordのコミュニティか私のTwitterにご連絡ください。  
+劣化を感じなかったって方も報告いただけると幸いです  
+[MMVC Client(GPU) v0.2.0.0](https://drive.google.com/file/d/10mYdSAHlIn6fV7eiDOLKFdQAboLJG3tw/view?usp=sharing) 
+
 ### pythonを利用する方
 このリポジトリをダウンロードして、展開してください。  
 また、下記.exeの実行を.pyの実行に置き換えて実行してください。
