@@ -444,27 +444,33 @@ def config_get(conf):
     return hparams
 
 if __name__ == '__main__':
-    while True:  # 無限ループ
-        print('「myprofile.json」のパスを入力してください。')
-        profile_path = input('>> ')
-        try:
-            if profile_path:
-                break
-            else:
-                print('ファイルが存在しません')
+    try: #add
+        while True:  # 無限ループ
+            print('「myprofile.json」のパスを入力してください。')
+            profile_path = input('>> ')
+            try:
+                if profile_path:
+                    break
+                else:
+                    print('ファイルが存在しません')
+                    continue
+        
+            except ValueError:
+                # ValueError例外を処理するコード
+                print('パスを入力してください・')
                 continue
+
+        params = config_get(profile_path)
+        vc_main = Hyperparameters()
+
+        print(params.path.json)
+        vc_main.set_profile(params)
+        vc_main.vc_run()
     
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('パスを入力してください・')
-            continue
-
-    params = config_get(profile_path)
-    vc_main = Hyperparameters()
-
-    print(params.path.json)
-    vc_main.set_profile(params)
-    vc_main.vc_run()
+    except Exception as e:
+        print('エラーが発生しました。')
+        print(e)
+        os.system('PAUSE')
 
 
     
