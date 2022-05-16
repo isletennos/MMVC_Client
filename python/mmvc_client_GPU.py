@@ -221,9 +221,9 @@ class Hyperparameters():
             #最初のデータAを取得する
             #rawdataのsizeは(frame_length * 2 - overlap)の2倍になっている type=byte 30720
             ##8192
-            in_raw_data_A = audio_input_stream.read(Hyperparameters.FLAME_LENGTH)
+            in_raw_data_A = audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
             #背景BGMを取得
-            back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH)
+            back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
             #ボイチェン(取得した音声の前半)
             #trancedataのsizeは(frame_length*2)となっている type=byte 16384
             trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data)
