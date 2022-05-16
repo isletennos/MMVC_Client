@@ -20,6 +20,10 @@ import json
 #use logging
 from logging import getLogger
 
+#ファイルダイアログ関連
+import tkinter as tk #add
+from tkinter import filedialog #add
+
 class Hyperparameters():
     CHANNELS = 1 #モノラル
     FORMAT = pyaudio.paInt16
@@ -446,8 +450,13 @@ def config_get(conf):
 if __name__ == '__main__':
     try: #add
         while True:  # 無限ループ
-            print('「myprofile.json」のパスを入力してください。')
-            profile_path = input('>> ')
+            tkroot = tk.Tk()
+            tkroot.withdraw()
+            print('myprofile.json を選択して下さい')
+            typ = [('jsonファイル','*.json')]
+            dir = './'
+            profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
+            tkroot.destroy()
             try:
                 if profile_path:
                     break
