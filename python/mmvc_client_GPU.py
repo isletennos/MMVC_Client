@@ -1,6 +1,8 @@
 # -*- coding:utf-8 -*-
 #use thread limit
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+import sys
 import pyaudio
 import numpy as np
 
@@ -19,6 +21,10 @@ import json
 #use logging
 from logging import getLogger
 
+#ファイルダイアログ関連
+import tkinter as tk #add
+from tkinter import filedialog #add
+
 class Hyperparameters():
     CHANNELS = 1 #モノラル
     FORMAT = pyaudio.paInt16
@@ -31,6 +37,7 @@ class Hyperparameters():
     FLAME_LENGTH = None
     SOURCE_ID = None
     TARGET_ID = None
+    USE_NR = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -39,6 +46,7 @@ class Hyperparameters():
     SEGMENT_SIZE = None
     N_SPEAKERS = None
     CONFIG_JSON_Body = None
+    DELAY_FLAMES = None
     #thread share var
     REC_NOISE_END_FLAG = False
     VC_END_FLAG = False
@@ -83,6 +91,12 @@ class Hyperparameters():
     def set_OVERLAP(self, value):
         Hyperparameters.OVERLAP = value
 
+    def set_USE_NR(self, value):
+        Hyperparameters.USE_NR = value
+
+    def set_DELAY_FLAMES(self, value):
+        Hyperparameters.DELAY_FLAMES = value
+
     def set_profile(self, profile):
         self.set_input_device_1(profile.device.input_device1)
         self.set_input_device_2(profile.device.input_device2)
@@ -94,6 +108,8 @@ class Hyperparameters():
         self.set_SOURCE_ID(profile.vc_conf.source_id)
         self.set_TARGET_ID(profile.vc_conf.target_id)
         self.set_OVERLAP(profile.vc_conf.overlap)
+        self.set_USE_NR(profile.others.use_nr)
+        self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -112,8 +128,10 @@ class Hyperparameters():
     def audio_trans_GPU(self, tdbm, input, net_g, noise_data):
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
+        #signal = torch.frombuffer(input, dtype=torch.float32)
         signal = signal / Hyperparameters.MAX_WAV_VALUE
-        signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
+        if Hyperparameters.USE_NR:
+            signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
         # any to many への取り組み(失敗)
         # f0を変えるだけでは枯れた声は直らなかった
         #f0trans = Shifter(Hyperparameters.SAMPLE_RATE, 1.75, frame_ms=20, shift_ms=10)
@@ -132,7 +150,20 @@ class Hyperparameters():
 
         audio1 = audio1 * Hyperparameters.MAX_WAV_VALUE
         audio1 = audio1.astype(np.int16).tobytes()
+
         return audio1
+
+    def over_lap_marge(self,trance_data_A,trance_data_B,overlap):
+        a = np.arange(overlap)/overlap
+        #overlap部分の処理
+        trance_data_A_lap = trance_data_A
+        trance_data_B_lap = trance_data_B
+        signal_A = np.frombuffer(trance_data_A_lap, dtype='int16')
+        signal_B = np.frombuffer(trance_data_B_lap, dtype='int16')
+        signal_Z = (1-a) * signal_A + a * signal_B
+        signal = np.round(signal_Z,decimals= 0)
+        signal = signal.astype(np.int16).tobytes()
+        return signal
 
     def vc_run(self):
         audio = pyaudio.PyAudio()
@@ -140,14 +171,17 @@ class Hyperparameters():
         net_g = self.launch_model()
         tdbm = Transform_Data_By_Model()
 
-        noise_data, noise_rate = sf.read(Hyperparameters.NOISE_FILE)
+        if Hyperparameters.USE_NR:
+            noise_data, noise_rate = sf.read(Hyperparameters.NOISE_FILE)
+        else:
+            noise_data = 0
 
         # audio stream voice
         #マイク
         audio_input_stream = audio.open(format=Hyperparameters.FORMAT,
                             channels=1,
                             rate=Hyperparameters.SAMPLE_RATE,
-                            frames_per_buffer=Hyperparameters.FLAME_LENGTH,
+                            frames_per_buffer=Hyperparameters.DELAY_FLAMES,
                             input_device_index=Hyperparameters.INPUT_DEVICE_1,
                             input=True)
 
@@ -155,7 +189,7 @@ class Hyperparameters():
         audio_output_stream = audio.open(format=Hyperparameters.FORMAT,
                             channels=1,
                             rate=Hyperparameters.SAMPLE_RATE,
-                            frames_per_buffer=Hyperparameters.FLAME_LENGTH,
+                            frames_per_buffer=Hyperparameters.DELAY_FLAMES,
                             output_device_index = Hyperparameters.OUTPUT_DEVICE_1,
                             output=True)
 
@@ -164,14 +198,14 @@ class Hyperparameters():
             back_audio_input_stream = audio.open(format=Hyperparameters.FORMAT,
                                 channels=1,
                                 rate=Hyperparameters.SAMPLE_RATE,
-                                frames_per_buffer=Hyperparameters.FLAME_LENGTH,
+                                frames_per_buffer=Hyperparameters.DELAY_FLAMES,
                                 input_device_index=Hyperparameters.INPUT_DEVICE_2,
                                 input=True)
         else:
             back_audio_input_stream = audio.open(format=Hyperparameters.FORMAT,
                                 channels=1,
                                 rate=Hyperparameters.SAMPLE_RATE,
-                                frames_per_buffer=Hyperparameters.FLAME_LENGTH,
+                                frames_per_buffer=Hyperparameters.DELAY_FLAMES,
                                 input_device_index=Hyperparameters.INPUT_DEVICE_1,
                                 input=True)
 
@@ -179,72 +213,78 @@ class Hyperparameters():
         back_audio_output_stream = audio.open(format=Hyperparameters.FORMAT,
                             channels=1,
                             rate=Hyperparameters.SAMPLE_RATE,
-                            frames_per_buffer=Hyperparameters.FLAME_LENGTH,
+                            frames_per_buffer=Hyperparameters.DELAY_FLAMES,
                             output_device_index = Hyperparameters.OUTPUT_DEVICE_1,
                             output=True)
 
         overlap = Hyperparameters.OVERLAP
-        a = np.arange(overlap)/overlap
+
+        #第一節を取得する
         try:
             print("準備が完了しました。VC開始します。")
             #マイクから音声読み込み
+            #最初のデータAを取得する
             #rawdataのsizeは(frame_length * 2 - overlap)の2倍になっている type=byte 30720
-            in_raw_data_A = audio_input_stream.read(Hyperparameters.FLAME_LENGTH * 2 - overlap)
+            ##8192
+            in_raw_data_A = audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
             #背景BGMを取得
-            back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH * 2 - overlap)
+            back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
             #ボイチェン(取得した音声の前半)
             #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-            trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A[:Hyperparameters.FLAME_LENGTH*2], net_g, noise_data)
-            #取得した音声の後半をBに
-            #rawdataのsizeは(frame_length*2)となっている type=byte 16384
-            in_raw_data_B = in_raw_data_A[-Hyperparameters.FLAME_LENGTH*2:]
+            trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data)
+            #Hyperparameters.DELAY_FLAMES + overlap を後半部分から取る
+            #ゴミ+Hyperparameters.DELAY_FLAMES+overlap >> Hyperparameters.DELAY_FLAMES+overlap
+            tmp = trance_data_A
+            tmp2 = back_in_raw_data_A
+            trance_data_A = trance_data_A[-(Hyperparameters.DELAY_FLAMES + overlap)*2:-overlap*2]
+            back_trance_data_A = back_in_raw_data_A[-(Hyperparameters.DELAY_FLAMES + overlap)*2:-overlap*2]
+            overlap_trance_data = tmp[-overlap*2:]
+            overlap_back_trance_data = tmp2[-overlap*2:]
 
-            back_trance_data_A = back_in_raw_data_A[Hyperparameters.FLAME_LENGTH*2:]
-            back_in_raw_data_B = back_in_raw_data_A[-Hyperparameters.FLAME_LENGTH*2:]
             while True:
                 if Hyperparameters.VC_END_FLAG: #エスケープ
                     print("vc_finish")
                     break
-                #ボイチェン(取得した音声の前半)
-                #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-                trance_data_B = self.audio_trans_GPU(tdbm, in_raw_data_B, net_g, noise_data)
-                #back 処理用
-                back_trance_data_B = back_in_raw_data_B
-                #trancedataのsizeは(frame_length * 2 - overlap)の2倍になっている type=byte 14336
-                trance_data_A_out = trance_data_A[:(Hyperparameters.FLAME_LENGTH - overlap)*2]
-                #back 処理用
-                back_trance_data_A_out = back_trance_data_A[:(Hyperparameters.FLAME_LENGTH - overlap)*2]
-                #output
-                audio_output_stream.write(trance_data_A_out)
+                #音声後半のoverlapを取得する
+                overlap_trance_data_A = trance_data_A[-overlap*2:]
+                trance_data_A = trance_data_A[:-overlap*2]
+                overlap_back_trance_data_A = back_trance_data_A[-overlap*2:]
+                back_trance_data_A = back_trance_data_A[:-overlap*2]
+
+                #(overlap(処理済み) + Hyperparameters.DELAY_FLAMES - 次のoverlap)の音声を出力する
+                out_trance_data_A = overlap_trance_data + trance_data_A
+                out_back_trance_data_A = overlap_back_trance_data + back_trance_data_A
+                #overlap + Hyperparameters.DELAY_FLAMESの音声を出力
+                audio_output_stream.write(out_trance_data_A)
                 if Hyperparameters.INPUT_DEVICE_2 != False:
-                    back_audio_output_stream.write(back_trance_data_A_out)
-                #overlap部分の処理
-                trance_data_A_lap = trance_data_A[-overlap*2:]
-                trance_data_B_lap = trance_data_B[:overlap*2]
-                signal_A = np.frombuffer(trance_data_A_lap, dtype='int16')
-                signal_B = np.frombuffer(trance_data_B_lap, dtype='int16')
-                signal_Z = (1-a) * signal_A + a * signal_B
-                signal = np.round(signal_Z,decimals= 0)
-                signal = signal.astype(np.int16).tobytes()
-                #overlap部分の処理(back)
-                back_trance_data_A_lap = back_trance_data_A[-overlap*2:]
-                back_trance_data_B_lap = back_trance_data_B[:overlap*2]
-                back_signal_A = np.frombuffer(back_trance_data_A_lap, dtype='int16')
-                back_signal_B = np.frombuffer(back_trance_data_B_lap, dtype='int16')
-                back_signal_Z = (1-a) * back_signal_A + a * back_signal_B
-                back_signal = np.round(back_signal_Z,decimals= 0)
-                back_signal = back_signal.astype(np.int16).tobytes()
-                #overlap部分の結合
-                trance_data_A = signal + trance_data_B[overlap*2:]
-                #overlap部分の結合(back)
-                back_trance_data_A = back_signal + back_trance_data_B[overlap*2:]
-                #次の入力を受け取る
-                in_raw_data_B_add = audio_input_stream.read(Hyperparameters.FLAME_LENGTH - overlap)
-                #次の入力を受け取る(back)
-                back_in_raw_data_B_add = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH - overlap)
-                #結合
-                in_raw_data_B = in_raw_data_B[-overlap*2:] + in_raw_data_B_add
-                back_in_raw_data_B = back_in_raw_data_B[-overlap*2:] + back_in_raw_data_B_add
+                    back_audio_output_stream.write(out_back_trance_data_A)
+                
+                #音声が出力されている間に次の音声の準備をする
+                #Hyperparameters.DELAY_FLAMESだけ、音声を取得する
+                in_raw_data_B = audio_input_stream.read(Hyperparameters.DELAY_FLAMES)
+                back_in_raw_data_B = back_audio_input_stream.read(Hyperparameters.DELAY_FLAMES)
+                #取得したサイズと前のデータの後ろを組み合わせて、segment_size(8192)にする。
+                in_raw_data_A = in_raw_data_A[-Hyperparameters.DELAY_FLAMES*2:] + in_raw_data_B
+                back_in_raw_data_A = back_in_raw_data_A[-Hyperparameters.DELAY_FLAMES*2:] + back_in_raw_data_B
+
+                #ボイチェン
+                #trancedataのsizeは(frame_length*2)となっている type=byte 16384
+                trance_data_B = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data)
+                #overlap + 後半部分のみ使う
+                trance_data_B = trance_data_B[-(overlap + Hyperparameters.DELAY_FLAMES)*2:]
+                #back 処理用
+                back_trance_data_B = back_in_raw_data_B[-(overlap + Hyperparameters.DELAY_FLAMES)*2:]
+                #overlap対応(今度は前半文)
+                overlap_trance_data_B = trance_data_B[:overlap*2]
+                overlap_back_trance_data_B = back_trance_data_B[:overlap*2]
+                trance_data_B = trance_data_B[overlap*2:]
+                back_trance_data_B = back_trance_data_B[:overlap*2:]
+                #overlap マージ
+                overlap_trance_data = self.over_lap_marge(overlap_trance_data_A,overlap_trance_data_B,overlap)
+                overlap_back_trance_data = self.over_lap_marge(overlap_back_trance_data_A,overlap_back_trance_data_B,overlap)
+
+                trance_data_A = trance_data_B
+                back_trance_data_A = back_trance_data_B
                 
 
         except KeyboardInterrupt:
@@ -409,27 +449,49 @@ def config_get(conf):
     return hparams
 
 if __name__ == '__main__':
-    while True:  # 無限ループ
-        print('「myprofile.json」のパスを入力してください。')
-        profile_path = input('>> ')
-        try:
-            if profile_path:
-                break
-            else:
-                print('ファイルが存在しません')
-                continue
+    try: #add
+        args = sys.argv
+        if len(args) < 2:
+            end_counter = 0
+            while True:  # 無限ループ
+                tkroot = tk.Tk()
+                tkroot.withdraw()
+                print('myprofile.json を選択して下さい')
+                typ = [('jsonファイル','*.json')]
+                dir = './'
+                profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
+                tkroot.destroy()
+                try:
+                    if profile_path:
+                        break
+                    else:
+                        print('ファイルが存在しません')
+                        end_counter = end_counter + 1
+                        print(end_counter)
+                        if end_counter > 3:
+                            break
+                        continue
+            
+                except ValueError:
+                    # ValueError例外を処理するコード
+                    print('パスを入力してください・')
+                    continue
+        else:
+            profile_path = args[1]
+            print("起動時にmyprofile.jsonのパスが指定されました。")
+            print(profile_path)
+
+        params = config_get(profile_path)
+        vc_main = Hyperparameters()
+
+        print(params.path.json)
+        vc_main.set_profile(params)
+        vc_main.vc_run()
     
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('パスを入力してください・')
-            continue
-
-    params = config_get(profile_path)
-    vc_main = Hyperparameters()
-
-    print(params.path.json)
-    vc_main.set_profile(params)
-    vc_main.vc_run()
+    except Exception as e:
+        print('エラーが発生しました。')
+        print(e)
+        os.system('PAUSE')
 
 
     
