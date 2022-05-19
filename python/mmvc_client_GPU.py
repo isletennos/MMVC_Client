@@ -2,6 +2,7 @@
 #use thread limit
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
+import sys
 import pyaudio
 import numpy as np
 
@@ -449,25 +450,36 @@ def config_get(conf):
 
 if __name__ == '__main__':
     try: #add
-        while True:  # 無限ループ
-            tkroot = tk.Tk()
-            tkroot.withdraw()
-            print('myprofile.json を選択して下さい')
-            typ = [('jsonファイル','*.json')]
-            dir = './'
-            profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
-            tkroot.destroy()
-            try:
-                if profile_path:
-                    break
-                else:
-                    print('ファイルが存在しません')
+        args = sys.argv
+        if len(args) < 2:
+            end_counter = 0
+            while True:  # 無限ループ
+                tkroot = tk.Tk()
+                tkroot.withdraw()
+                print('myprofile.json を選択して下さい')
+                typ = [('jsonファイル','*.json')]
+                dir = './'
+                profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
+                tkroot.destroy()
+                try:
+                    if profile_path:
+                        break
+                    else:
+                        print('ファイルが存在しません')
+                        end_counter = end_counter + 1
+                        print(end_counter)
+                        if end_counter > 3:
+                            break
+                        continue
+            
+                except ValueError:
+                    # ValueError例外を処理するコード
+                    print('パスを入力してください・')
                     continue
-        
-            except ValueError:
-                # ValueError例外を処理するコード
-                print('パスを入力してください・')
-                continue
+        else:
+            profile_path = args[1]
+            print("起動時にmyprofile.jsonのパスが指定されました。")
+            print(profile_path)
 
         params = config_get(profile_path)
         vc_main = Hyperparameters()
