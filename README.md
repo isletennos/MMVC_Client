@@ -18,14 +18,17 @@ https://github.com/isletennos/MMVC_Trainer
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからGPU版 or CPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
-[MMVC(GPU ver) v1.2.0 サポート](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
-[MMVC(CPU_ver) v1.2.0 サポート(現在非推奨)](https://drive.google.com/file/d/1KLqo_q-qbahPRzNo2kUhCqHqnb8lTjMJ/view?usp=sharing)
-#### 先行ver Client v0.2.0.0
-現在検証中の先行公開verです。このverからClientのverを付番します。    
-遅延が大幅に削減＆CPU負荷が軽減されています。  
-品質の劣化等感じた方がいましたらお手数ですが、discordのコミュニティか私のTwitterにご連絡ください。  
-劣化を感じなかったって方も報告いただけると幸いです  
-[MMVC Client(GPU) v0.2.0.0](https://drive.google.com/file/d/10mYdSAHlIn6fV7eiDOLKFdQAboLJG3tw/view?usp=sharing) 
+[MMVC_client(GPU ver) v0.2.0.1](https://drive.google.com/file/d/1MyIvxZ19BovpSsTZSNedofwSARmeaNH6/view?usp=sharing)  
+[MMVC_client(CPU_ver) (現在非推奨)](https://drive.google.com/file/d/1KLqo_q-qbahPRzNo2kUhCqHqnb8lTjMJ/view?usp=sharing)
+
+### 旧ver
+[MMVC_client(GPU ver)](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
+
+#### TrainnerとClientの対応表
+| ver 対応表                | MMVC Trainner v1.2.0.x | MMVC Trainner v1.2.1.x | 
+| ------------------------- | ---------------------- | ---------------------- | 
+| MMVC Client 無印(CPU/GPU) | 〇                     | 〇                     | 
+| MMVC Client v0.2.0.x(GPU) | 〇                     | 〇                     | 
 
 ### pythonを利用する方
 このリポジトリをダウンロードして、展開してください。  
@@ -101,10 +104,24 @@ https://github.com/isletennos/MMVC_Trainer
 "model"にはMMVC_Trainerで学習したモデルのパスを  
 "noise"には 2. 環境によるノイズ音を取得 で作成した「noise.wav」のパスを  
 
+####  3.4. ノイズ削減機能のオン/オフ
+```
+  "others": {
+    "use_nr":true
+  }
+```
+"use_nr"をfalseにすると無効になります。  
+不要な方はfalseにしてみてください。
+
 ### 4. ソフトウェアの起動
-rt-mmvc_client_GPU(rt-mmvc_client_CPU)ディレクトリの「rt-mmvc_client_GPU.exe」を実行してください。  
+パターン1
+「mmvc_client_GPU.bat」を実行  
+正しく「myprofile.json」が設定されていればそのまま起動します。
+
+パターン2
+「mmvc_client_GPU.exe」を実行してください。  
 起動に少しだけ時間がかかります。  
-起動すると「myprofile.json」のパスを聞かれるので、パスを入力して下さい。  
+起動すると「myprofile.json」のパスを聞かれるので、パスを指定して下さい。  
 ```
 UserWarning: stft will soon require the return_complex parameter be given for real inputs, and will further require that return_complex=True in a future PyTorch release. (Triggered internally at  ..\aten\src\ATen\native\SpectralOps.cpp:664.)
 ```
