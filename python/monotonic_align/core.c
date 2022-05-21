@@ -5,7 +5,7 @@
     "distutils": {
         "name": "monotonic_align.core",
         "sources": [
-            "d:/code/monotonic_align/core.pyx"
+            "core.pyx"
         ]
     },
     "module_name": "monotonic_align.core"
