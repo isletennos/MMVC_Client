@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*
 import pyaudio
+import sounddevice as sd
 import wave
 import numpy as np
 import time
@@ -73,6 +74,10 @@ def MakeWavFile():
     
     params = config_get(profile_path)
     print(params.device.input_device1)
+    if type(params.device.input_device1) == str:
+        device_index = sd.query_devices().index(sd.query_devices(params.device.input_device1, 'input'))
+    else:
+        device_index = params.device.input_device1
 
     p = pyaudio.PyAudio()
     stream = p.open(format = pyaudio.paInt16,

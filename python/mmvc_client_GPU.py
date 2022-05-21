@@ -14,6 +14,7 @@ import utils
 from models import SynthesizerTrn
 from text.symbols import symbols
 # from Shifter.shifter import Shifter
+import sounddevice as sd
 import soundfile as sf
 #noice reduce
 import noisereduce as nr
@@ -98,9 +99,22 @@ class Hyperparameters():
         Hyperparameters.DELAY_FLAMES = value
 
     def set_profile(self, profile):
-        self.set_input_device_1(profile.device.input_device1)
-        self.set_input_device_2(profile.device.input_device2)
-        self.set_output_device_1(profile.device.output_device)
+        sound_devices = sd.query_devices()
+        if type(profile.device.input_device1) == str:
+            self.set_input_device_1(sound_devices.index(sd.query_devices(profile.device.input_device1, 'input')))
+        else:
+            self.set_input_device_1(profile.device.input_device1)
+        
+        if type(profile.device.input_device2) == str:
+            self.set_input_device_2(sound_devices.index(sd.query_devices(profile.device.input_device2, 'input')))
+        else:
+            self.set_input_device_2(profile.device.input_device2)
+        
+        if type(profile.device.output_device) == str:
+            self.set_output_device_1(sound_devices.index(sd.query_devices(profile.device.output_device, 'output')))
+        else:
+            self.set_output_device_1(profile.device.output_device)
+        
         self.set_config_path(profile.path.json)
         self.set_model_path(profile.path.model)
         self.set_NOISE_FILE(profile.path.noise)
