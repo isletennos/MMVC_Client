@@ -126,9 +126,10 @@ if __name__ == '__main__':
                         break
                     continue
         
-            except ValueError:
+            except Exception as e:
                 # ValueError例外を処理するコード
                 print(profile_path)
+                print(e)
                 print('パスを入力してください・')
                 continue
                 
