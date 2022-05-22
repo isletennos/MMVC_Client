@@ -4,6 +4,11 @@ import wave
 import numpy as np
 import time
 import json
+import os
+
+#ファイルダイアログ関連
+import tkinter as tk #add
+from tkinter import filedialog #add
 
 class VCPrifile():
   def __init__(self, **kwargs):
@@ -44,32 +49,8 @@ def config_get(conf):
     hparams = VCPrifile(**config)
     return hparams
 
-def MakeWavFile():
+def MakeWavFile(profile_path):
     chunk = 1024
-    while True:  # 無限ループ
-        print('学習済みモデルのサンプリングレートを指定してください。')
-        try:
-            sr = int(input('>> '))
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('数字以外が入力されました。数字のみを入力してください')
-            continue
-        break
-
-    while True:  # 無限ループ
-        print('「myprofile.json」のパスを入力してください。')
-        profile_path = input('>> ')
-        try:
-            if profile_path:
-                break
-            else:
-                print('ファイルが存在しません')
-                continue
-    
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('パスを入力してください・')
-            continue
     
     params = config_get(profile_path)
     print(params.device.input_device1)
@@ -112,4 +93,45 @@ def MakeWavFile():
     input()
 
 if __name__ == '__main__':
-    MakeWavFile()
+    try: #add
+        end_counter = 0
+        while True:  # 無限ループ
+            #サンプリングレートの指定
+            while True:  # 無限ループ
+                print('学習済みモデルのサンプリングレートを指定してください。')
+                try:
+                    sr = int(input('>> '))
+                except ValueError:
+                    # ValueError例外を処理するコード
+                    print('数字以外が入力されました。数字のみを入力してください')
+                    continue
+                break
+
+            tkroot = tk.Tk()
+            tkroot.withdraw()
+            print('myprofile.json を選択して下さい')
+            typ = [('jsonファイル','*.json')]
+            dir = './'
+            profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
+            tkroot.destroy()
+            try:
+                if profile_path:
+                    MakeWavFile(profile_path)
+                    break
+                else:
+                    print('ファイルが存在しません')
+                    end_counter = end_counter + 1
+                    print(end_counter)
+                    if end_counter > 3:
+                        break
+                    continue
+        
+            except ValueError:
+                # ValueError例外を処理するコード
+                print('パスを入力してください・')
+                continue
+                
+    except Exception as e:
+        print('エラーが発生しました。')
+        print(e)
+        os.system('PAUSE')
