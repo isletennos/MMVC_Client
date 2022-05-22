@@ -94,19 +94,19 @@ def MakeWavFile(profile_path):
 
 if __name__ == '__main__':
     try: #add
+        #サンプリングレートの指定
+        while True:  # 無限ループ
+            print('学習済みモデルのサンプリングレートを指定してください。')
+            try:
+                sr = int(input('>> '))
+            except ValueError:
+                # ValueError例外を処理するコード
+                print('数字以外が入力されました。数字のみを入力してください')
+                continue
+            break
+
         end_counter = 0
         while True:  # 無限ループ
-            #サンプリングレートの指定
-            while True:  # 無限ループ
-                print('学習済みモデルのサンプリングレートを指定してください。')
-                try:
-                    sr = int(input('>> '))
-                except ValueError:
-                    # ValueError例外を処理するコード
-                    print('数字以外が入力されました。数字のみを入力してください')
-                    continue
-                break
-
             tkroot = tk.Tk()
             tkroot.withdraw()
             print('myprofile.json を選択して下さい')
@@ -128,6 +128,7 @@ if __name__ == '__main__':
         
             except ValueError:
                 # ValueError例外を処理するコード
+                print(profile_path)
                 print('パスを入力してください・')
                 continue
                 
