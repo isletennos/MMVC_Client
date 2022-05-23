@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*
 import pyaudio
+import sounddevice as sd
 import wave
 import numpy as np
 import time
@@ -43,7 +44,7 @@ class VCPrifile():
 
 def config_get(conf):
     config_path = conf
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         data = f.read()
     config = json.loads(data)
     hparams = VCPrifile(**config)
@@ -54,6 +55,10 @@ def MakeWavFile(profile_path):
     
     params = config_get(profile_path)
     print(params.device.input_device1)
+    if type(params.device.input_device1) == str:
+        device_index = sd.query_devices().index(sd.query_devices(params.device.input_device1, 'input'))
+    else:
+        device_index = params.device.input_device1
 
     p = pyaudio.PyAudio()
     stream = p.open(format = pyaudio.paInt16,

@@ -8,6 +8,7 @@ phonemizer==2.2.1
 PyAudio==0.2.11
 retry==0.9.2
 scipy==1.7.1
+sounddevice==0.4.4
 SoundFile==0.10.3.post1
 torch==1.9.0+cu111
 tqdm==4.62.1
