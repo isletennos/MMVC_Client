@@ -26,6 +26,9 @@ from logging import getLogger
 import tkinter as tk #add
 from tkinter import filedialog #add
 
+import readchar
+
+
 class Hyperparameters():
     CHANNELS = 1 #モノラル
     FORMAT = pyaudio.paInt16
@@ -39,6 +42,7 @@ class Hyperparameters():
     SOURCE_ID = None
     TARGET_ID = None
     USE_NR = None
+    VOICE_LIST = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -95,6 +99,9 @@ class Hyperparameters():
     def set_USE_NR(self, value):
         Hyperparameters.USE_NR = value
 
+    def set_VOICE_LIST(self, value):
+        Hyperparameters.VOICE_LIST = value
+
     def set_DELAY_FLAMES(self, value):
         Hyperparameters.DELAY_FLAMES = value
 
@@ -123,6 +130,7 @@ class Hyperparameters():
         self.set_TARGET_ID(profile.vc_conf.target_id)
         self.set_OVERLAP(profile.vc_conf.overlap)
         self.set_USE_NR(profile.others.use_nr)
+        self.set_VOICE_LIST(profile.others.voice_list)
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
 
     def launch_model(self):
@@ -139,7 +147,7 @@ class Hyperparameters():
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
         
-    def audio_trans_GPU(self, tdbm, input, net_g, noise_data):
+    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id):
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
@@ -159,7 +167,7 @@ class Hyperparameters():
             data = TextAudioSpeakerCollate()([data])
             x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda() for x in data]
 
-            sid_tgt1 = torch.LongTensor([Hyperparameters.TARGET_ID]).cuda() # 話者IDはJVSの番号を100で割った余りです
+            sid_tgt1 = torch.LongTensor([target_id]).cuda() # 話者IDはJVSの番号を100で割った余りです
             audio1 = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_tgt1)[0][0,0].data.cpu().float().numpy()
 
         audio1 = audio1 * Hyperparameters.MAX_WAV_VALUE
@@ -232,6 +240,8 @@ class Hyperparameters():
                             output=True)
 
         overlap = Hyperparameters.OVERLAP
+        target_id = Hyperparameters.TARGET_ID
+        target_index = 0
 
         #第一節を取得する
         try:
@@ -245,7 +255,7 @@ class Hyperparameters():
             back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
             #ボイチェン(取得した音声の前半)
             #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-            trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data)
+            trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data, target_id)
             #Hyperparameters.DELAY_FLAMES + overlap を後半部分から取る
             #ゴミ+Hyperparameters.DELAY_FLAMES+overlap >> Hyperparameters.DELAY_FLAMES+overlap
             tmp = trance_data_A
@@ -256,6 +266,21 @@ class Hyperparameters():
             overlap_back_trance_data = tmp2[-overlap*2:]
 
             while True:
+                #声id変更
+                kb = readchar.readchar()
+                if kb == b'n':
+                    target_index += 1
+                    if target_index >= len(Hyperparameters.VOICE_LIST) :
+                        target_index = 0
+                    target_id = Hyperparameters.VOICE_LIST[target_index]
+                    print(f"next - voice id: {target_id}")
+                if kb == b'p':
+                    target_index -= 1
+                    if target_index < 0 :
+                        target_index = len(Hyperparameters.VOICE_LIST) - 1
+                    target_id = Hyperparameters.VOICE_LIST[target_index]
+                    print(f"prev - voice id: {target_id}")
+
                 if Hyperparameters.VC_END_FLAG: #エスケープ
                     print("vc_finish")
                     break
@@ -283,7 +308,7 @@ class Hyperparameters():
 
                 #ボイチェン
                 #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-                trance_data_B = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data)
+                trance_data_B = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data, target_id)
                 #overlap + 後半部分のみ使う
                 trance_data_B = trance_data_B[-(overlap + Hyperparameters.DELAY_FLAMES)*2:]
                 #back 処理用
