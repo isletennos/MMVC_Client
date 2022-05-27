@@ -241,7 +241,6 @@ class Hyperparameters():
 
         overlap = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
-        target_index = 0
 
         #第一節を取得する
         try:
