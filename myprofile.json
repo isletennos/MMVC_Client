@@ -17,6 +17,7 @@
     "noise":"D:\\GitRepository\\MMVC_Client\\brunch\\MMVC_Client_old\\noise.wav"
   },
   "others": {
-    "use_nr":false
+    "use_nr":false,
+    "voice_list": [107, 100, 1, 10, 20, 30],
   }
 }
