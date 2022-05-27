@@ -26,7 +26,7 @@ from logging import getLogger
 import tkinter as tk #add
 from tkinter import filedialog #add
 
-import readchar
+import keyboard
 
 
 class Hyperparameters():
@@ -266,20 +266,12 @@ class Hyperparameters():
             overlap_back_trance_data = tmp2[-overlap*2:]
 
             while True:
-                #声id変更
-                kb = readchar.readchar()
-                if kb == b'n':
-                    target_index += 1
-                    if target_index >= len(Hyperparameters.VOICE_LIST) :
-                        target_index = 0
-                    target_id = Hyperparameters.VOICE_LIST[target_index]
-                    print(f"next - voice id: {target_id}")
-                if kb == b'p':
-                    target_index -= 1
-                    if target_index < 0 :
-                        target_index = len(Hyperparameters.VOICE_LIST) - 1
-                    target_id = Hyperparameters.VOICE_LIST[target_index]
-                    print(f"prev - voice id: {target_id}")
+                #声id変更 数字キーの0～9で切り替え
+                for k in range(10) :
+                    if keyboard.is_pressed(str(k)) :
+                        if k < len(Hyperparameters.VOICE_LIST) :
+                            target_id = Hyperparameters.VOICE_LIST[k]
+                            print(f"voice id: {target_id}")
 
                 if Hyperparameters.VC_END_FLAG: #エスケープ
                     print("vc_finish")
