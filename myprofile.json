@@ -18,6 +18,6 @@
   },
   "others": {
     "use_nr":false,
-    "voice_list": [107, 100, 1, 10, 20, 30],
+    "voice_list": [107, 100, 1, 10, 20, 30]
   }
 }
