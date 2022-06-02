@@ -65,7 +65,7 @@ def MakeWavFile(profile_path):
                     channels = 1,
                     rate = sr,
                     input = True,
-                    input_device_index=params.device.input_device1,
+                    input_device_index = device_index,
                     frames_per_buffer = chunk)
     #レコード開始
     print("あなたの環境ノイズを録音します。マイクの電源を入れて、何もせずに待機していてください。")
