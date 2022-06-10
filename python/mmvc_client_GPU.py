@@ -56,6 +56,8 @@ class Hyperparameters():
     REC_NOISE_END_FLAG = False
     VC_END_FLAG = False
     OVERLAP = None
+    DISPOSE_STFT_SPECS = 0
+    DISPOSE_CONV1D_SPECS = 0
     
 
     def set_input_device_1(self, value):
@@ -105,6 +107,12 @@ class Hyperparameters():
     def set_DELAY_FLAMES(self, value):
         Hyperparameters.DELAY_FLAMES = value
 
+    def set_DISPOSE_STFT_SPECS(self, value):
+        Hyperparameters.DISPOSE_STFT_SPECS = value
+
+    def set_DISPOSE_CONV1D_SPECS(self, value):
+        Hyperparameters.DISPOSE_CONV1D_SPECS = value
+
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
         if type(profile.device.input_device1) == str:
@@ -132,6 +140,8 @@ class Hyperparameters():
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
+        self.set_DISPOSE_STFT_SPECS(profile.vc_conf.dispose_stft_specs)
+        self.set_DISPOSE_CONV1D_SPECS(profile.vc_conf.dispose_conv1d_specs)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -147,7 +157,11 @@ class Hyperparameters():
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
         
-    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id):
+    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs):
+        hop_length = Hyperparameters.HOP_LENGTH
+        dispose_stft_length = dispose_stft_specs * hop_length
+        dispose_conv1d_length = dispose_conv1d_specs * hop_length
+    
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
@@ -163,27 +177,46 @@ class Hyperparameters():
         #voice conversion
         with torch.no_grad():
             #SID
-            data = tdbm.get_audio_text_speaker_pair(signal.view(1,Hyperparameters.FLAME_LENGTH), ["m", Hyperparameters.SOURCE_ID, "m"])
-            data = TextAudioSpeakerCollate()([data])
+            trans_length = signal.size()[0]
+            text, spec, wav, sid = tdbm.get_audio_text_speaker_pair(signal.view(1, trans_length), ["m", Hyperparameters.SOURCE_ID, "m"])
+            if dispose_stft_specs != 0:
+                # specの頭と終がstft paddingの影響受けるので2コマを削る
+                # wavもspecで削るぶんと同じだけ頭256と終256を削る
+                spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
+                wav = wav[:, dispose_stft_length:-dispose_stft_length]
+            data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
             x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda() for x in data]
 
-            sid_tgt1 = torch.LongTensor([target_id]).cuda() # 話者IDはJVSの番号を100で割った余りです
-            audio1 = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_tgt1)[0][0,0].data.cpu().float().numpy()
+            sid_target = torch.LongTensor([target_id]).cuda() # 話者IDはJVSの番号を100で割った余りです
+            audio = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_target)[0][0,0].data.cpu().float().numpy()
 
-        audio1 = audio1 * Hyperparameters.MAX_WAV_VALUE
-        audio1 = audio1.astype(np.int16).tobytes()
+        if dispose_conv1d_specs != 0:
+            # 出力されたwavでconv1d paddingの影響受けるところを削る
+            audio = audio[dispose_conv1d_length:-dispose_conv1d_length]
+        audio = audio * Hyperparameters.MAX_WAV_VALUE
+        audio = audio.astype(np.int16).tobytes()
 
-        return audio1
+        return audio
 
-    def over_lap_marge(self,trance_data_A,trance_data_B,overlap):
-        a = np.arange(overlap)/overlap
-        #overlap部分の処理
-        trance_data_A_lap = trance_data_A
-        trance_data_B_lap = trance_data_B
-        signal_A = np.frombuffer(trance_data_A_lap, dtype='int16')
-        signal_B = np.frombuffer(trance_data_B_lap, dtype='int16')
-        signal_Z = (1-a) * signal_A + a * signal_B
-        signal = np.round(signal_Z,decimals= 0)
+    def overlap_merge(self, now_wav, prev_wav, overlap_length):
+        """
+        生成したwavデータを前回生成したwavデータとoverlap_lengthだけ重ねてグラデーション的にマージします
+        終端のoverlap_lengthぶんは次回マージしてから再生するので削除します
+
+        Parameters
+        ----------
+        now_wav: 今回生成した音声wavデータ
+        prev_wav: 前回生成した音声wavデータ
+        overlap_length: 重ねる長さ
+        """
+        gradation = np.arange(overlap_length) / overlap_length
+        now = np.frombuffer(now_wav, dtype='int16')
+        prev = np.frombuffer(prev_wav, dtype='int16')
+        now_head = now[:overlap_length]
+        prev_tail = prev[-overlap_length:]
+        merged = prev_tail * (1 - gradation) + now_head * gradation
+        overlapped = np.append(merged, now[overlap_length:-overlap_length])
+        signal = np.round(overlapped, decimals=0)
         signal = signal.astype(np.int16).tobytes()
         return signal
 
@@ -239,32 +272,43 @@ class Hyperparameters():
                             output_device_index = Hyperparameters.OUTPUT_DEVICE_1,
                             output=True)
 
-        overlap = Hyperparameters.OVERLAP
+        with_bgm = (Hyperparameters.INPUT_DEVICE_2 != False)
+        delay_frames = Hyperparameters.DELAY_FLAMES
+        overlap_length = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
+        wav_bytes = 2 # 1音声データあたりのデータサイズ(2bytes) (math.log2(max_wav_value)+1)/8 で算出してもよいけど
+        hop_length = Hyperparameters.HOP_LENGTH
+        dispose_stft_specs = Hyperparameters.DISPOSE_STFT_SPECS
+        dispose_conv1d_specs = Hyperparameters.DISPOSE_CONV1D_SPECS
+        dispose_specs =  dispose_stft_specs * 2 + dispose_conv1d_specs * 2
+        dispose_length = dispose_specs * hop_length
+        assert(delay_frames >= dispose_length + overlap_length)
 
         #第一節を取得する
         try:
             print("準備が完了しました。VC開始します。")
-            #マイクから音声読み込み
-            #最初のデータAを取得する
-            #rawdataのsizeは(frame_length * 2 - overlap)の2倍になっている type=byte 30720
-            ##8192
-            in_raw_data_A = audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
-            #背景BGMを取得
-            back_in_raw_data_A = back_audio_input_stream.read(Hyperparameters.FLAME_LENGTH, exception_on_overflow = False)
-            #ボイチェン(取得した音声の前半)
-            #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-            trance_data_A = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data, target_id)
-            #Hyperparameters.DELAY_FLAMES + overlap を後半部分から取る
-            #ゴミ+Hyperparameters.DELAY_FLAMES+overlap >> Hyperparameters.DELAY_FLAMES+overlap
-            tmp = trance_data_A
-            tmp2 = back_in_raw_data_A
-            trance_data_A = trance_data_A[-(Hyperparameters.DELAY_FLAMES + overlap)*2:-overlap*2]
-            back_trance_data_A = back_in_raw_data_A[-(Hyperparameters.DELAY_FLAMES + overlap)*2:-overlap*2]
-            overlap_trance_data = tmp[-overlap*2:]
-            overlap_back_trance_data = tmp2[-overlap*2:]
 
+            prev_wav_tail = bytes(0)
+            in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
+            trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, 0, 0) # 遅延減らすため初回だけpadding対策使わない
+            overlapped_wav = trans_wav
+            prev_trans_wav = trans_wav
+            if dispose_length + overlap_length != 0:
+                prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 次回の頭のデータとして終端データを保持する
+            if with_bgm:
+                back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
             while True:
+                audio_output_stream.write(overlapped_wav)
+                in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
+                trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs)
+                overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
+                prev_trans_wav = trans_wav
+                if dispose_length + overlap_length != 0:
+                    prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 今回の終端の捨てデータぶんだけ次回の頭のデータとして保持する
+                if with_bgm:
+                    back_audio_output_stream.write(back_in_raw)
+                    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow=False) # 背景BGMを取得
+
                 #声id変更 数字キーの0～9で切り替え
                 for k in range(10) :
                     if keyboard.is_pressed(str(k)) :
@@ -275,47 +319,6 @@ class Hyperparameters():
                 if Hyperparameters.VC_END_FLAG: #エスケープ
                     print("vc_finish")
                     break
-                #音声後半のoverlapを取得する
-                overlap_trance_data_A = trance_data_A[-overlap*2:]
-                trance_data_A = trance_data_A[:-overlap*2]
-                overlap_back_trance_data_A = back_trance_data_A[-overlap*2:]
-                back_trance_data_A = back_trance_data_A[:-overlap*2]
-
-                #(overlap(処理済み) + Hyperparameters.DELAY_FLAMES - 次のoverlap)の音声を出力する
-                out_trance_data_A = overlap_trance_data + trance_data_A
-                out_back_trance_data_A = overlap_back_trance_data + back_trance_data_A
-                #overlap + Hyperparameters.DELAY_FLAMESの音声を出力
-                audio_output_stream.write(out_trance_data_A)
-                if Hyperparameters.INPUT_DEVICE_2 != False:
-                    back_audio_output_stream.write(out_back_trance_data_A)
-                
-                #音声が出力されている間に次の音声の準備をする
-                #Hyperparameters.DELAY_FLAMESだけ、音声を取得する
-                in_raw_data_B = audio_input_stream.read(Hyperparameters.DELAY_FLAMES)
-                back_in_raw_data_B = back_audio_input_stream.read(Hyperparameters.DELAY_FLAMES)
-                #取得したサイズと前のデータの後ろを組み合わせて、segment_size(8192)にする。
-                in_raw_data_A = in_raw_data_A[-Hyperparameters.DELAY_FLAMES*2:] + in_raw_data_B
-                back_in_raw_data_A = back_in_raw_data_A[-Hyperparameters.DELAY_FLAMES*2:] + back_in_raw_data_B
-
-                #ボイチェン
-                #trancedataのsizeは(frame_length*2)となっている type=byte 16384
-                trance_data_B = self.audio_trans_GPU(tdbm, in_raw_data_A, net_g, noise_data, target_id)
-                #overlap + 後半部分のみ使う
-                trance_data_B = trance_data_B[-(overlap + Hyperparameters.DELAY_FLAMES)*2:]
-                #back 処理用
-                back_trance_data_B = back_in_raw_data_B[-(overlap + Hyperparameters.DELAY_FLAMES)*2:]
-                #overlap対応(今度は前半文)
-                overlap_trance_data_B = trance_data_B[:overlap*2]
-                overlap_back_trance_data_B = back_trance_data_B[:overlap*2]
-                trance_data_B = trance_data_B[overlap*2:]
-                back_trance_data_B = back_trance_data_B[:overlap*2:]
-                #overlap マージ
-                overlap_trance_data = self.over_lap_marge(overlap_trance_data_A,overlap_trance_data_B,overlap)
-                overlap_back_trance_data = self.over_lap_marge(overlap_back_trance_data_A,overlap_back_trance_data_B,overlap)
-
-                trance_data_A = trance_data_B
-                back_trance_data_A = back_trance_data_B
-                
 
         except KeyboardInterrupt:
             audio_input_stream.stop_stream()
