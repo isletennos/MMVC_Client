@@ -8,6 +8,8 @@
     "frame_length":8192,
     "delay_flames":4096,
     "overlap":1024,
+    "dispose_stft_specs":2,
+    "dispose_conv1d_specs":10,
     "source_id":107,
     "target_id":100
   },
