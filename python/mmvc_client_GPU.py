@@ -222,6 +222,8 @@ class Hyperparameters():
         prev_wav: 前回生成した音声wavデータ
         overlap_length: 重ねる長さ
         """
+        if overlap_length == 0:
+            return now_wav
         gradation = np.arange(overlap_length) / overlap_length
         now = np.frombuffer(now_wav, dtype='int16')
         prev = np.frombuffer(prev_wav, dtype='int16')
