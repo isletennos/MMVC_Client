@@ -59,6 +59,8 @@ class Hyperparameters():
     OVERLAP = None
     DISPOSE_STFT_SPECS = 0
     DISPOSE_CONV1D_SPECS = 0
+    INPUT_FILENAME = None
+    OUTPUT_FILENAME = None
     
 
     def set_input_device_1(self, value):
@@ -114,6 +116,12 @@ class Hyperparameters():
     def set_DISPOSE_CONV1D_SPECS(self, value):
         Hyperparameters.DISPOSE_CONV1D_SPECS = value
 
+    def set_INPUT_FILENAME(self, value):
+        Hyperparameters.INPUT_FILENAME = value
+
+    def set_OUTPUT_FILENAME(self, value):
+        Hyperparameters.OUTPUT_FILENAME = value
+
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
         if type(profile.device.input_device1) == str:
@@ -143,6 +151,10 @@ class Hyperparameters():
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
         self.set_DISPOSE_STFT_SPECS(profile.vc_conf.dispose_stft_specs)
         self.set_DISPOSE_CONV1D_SPECS(profile.vc_conf.dispose_conv1d_specs)
+        if hasattr(profile.others, "input_filename"):
+            self.set_INPUT_FILENAME(profile.others.input_filename)
+        if hasattr(profile.others, "output_filename"):
+            self.set_OUTPUT_FILENAME(profile.others.output_filename)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -249,8 +261,14 @@ class Hyperparameters():
                             output_device_index = Hyperparameters.OUTPUT_DEVICE_1,
                             output=True)
 
-        # テスト用モックアップ利用
-        audio_input_stream = audio_output_stream = MockStream("test_sample_input.wav", "test_sample_output.wav")
+        # テストファイル入出力のモックアップ
+        mock_stream = MockStream(Hyperparameters.SAMPLE_RATE)
+        if Hyperparameters.INPUT_FILENAME != None:
+            mock_stream.open_inputfile(Hyperparameters.INPUT_FILENAME)
+            audio_input_stream = mock_stream
+        if Hyperparameters.OUTPUT_FILENAME != None:
+            mock_stream.open_outputfile(Hyperparameters.OUTPUT_FILENAME)
+            audio_output_stream = mock_stream
 
         #CABLE Output
         if Hyperparameters.INPUT_DEVICE_2 != False:
@@ -448,16 +466,25 @@ class TextAudioSpeakerCollate():
         return text_padded, text_lengths, spec_padded, spec_lengths, wav_padded, wav_lengths, sid
 
 class MockStream:
-    def __init__(self, input_filename, output_filename):
+    """
+    オーディオストリーミング入出力をファイル入出力にそのまま置き換えるためのモック
+    """
+    def __init__(self, sampling_rate):
+        self.sampling_rate = sampling_rate
+        self.start_count = 2
+        self.end_count = 2
+        self.fr = None
+        self.fw = None
+
+    def open_inputfile(self, input_filename):
         self.fr = wave.open(input_filename, 'rb')
+
+    def open_outputfile(self, output_filename):
         self.fw = wave.open(output_filename, 'wb')
-        self.sampling_rate = 24000
         self.fw.setnchannels(1)
         self.fw.setsampwidth(2)
         self.fw.setframerate(self.sampling_rate)
-        self.start_count = 2
-        self.end_count = 2
-        
+
     def read(self, length, exception_on_overflow=False):
         if self.start_count > 0:
             wav = bytes(length * 2)
@@ -473,6 +500,17 @@ class MockStream:
 
     def write(self, wav):
         self.fw.writeframes(wav)
+
+    def stop_stream(self):
+        pass
+    
+    def close(self):
+        if self.fr != None:
+            self.fr.close()
+            self.fr = None
+        if self.fw != None:
+            self.fw.close()
+            self.fw = None
 
 class VCPrifile():
   def __init__(self, **kwargs):
