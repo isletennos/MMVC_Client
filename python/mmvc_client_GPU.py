@@ -497,7 +497,7 @@ class MockStream:
             wav = bytes(length * 2)
             self.end_count -= 1
             if self.end_count < 0:
-                raise ValueError("End of data.")
+                Hyperparameters.VC_END_FLAG = True
         return wav
 
     def write(self, wav):
