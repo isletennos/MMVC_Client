@@ -201,11 +201,8 @@ class Hyperparameters():
             x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda() for x in data]
 
             sid_target = torch.LongTensor([target_id]).cuda() # 話者IDはJVSの番号を100で割った余りです
-            audio = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_target)[0][0,0].data.cpu().float().numpy()
+            audio = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
-        if dispose_conv1d_specs != 0:
-            # 出力されたwavでconv1d paddingの影響受けるところを削る
-            audio = audio[dispose_conv1d_length:-dispose_conv1d_length]
         audio = audio * Hyperparameters.MAX_WAV_VALUE
         audio = audio.astype(np.int16).tobytes()
 

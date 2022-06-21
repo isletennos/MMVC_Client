@@ -523,11 +523,14 @@ class SynthesizerTrn(nn.Module):
     o = self.dec((z * y_mask)[:,:,:max_len], g=g)
     return o, attn, y_mask, (z, z_p, m_p, logs_p)
 
-  def voice_conversion(self, y, y_lengths, sid_src, sid_tgt):
+  def voice_conversion(self, y, y_lengths, sid_src, sid_tgt, dispose_conv1d_specs=0):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
     g_src = self.emb_g(sid_src).unsqueeze(-1)
     g_tgt = self.emb_g(sid_tgt).unsqueeze(-1)
     z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g_src)
+    if dispose_conv1d_specs != 0:
+      z = z[:, :, dispose_conv1d_specs:-dispose_conv1d_specs]
+      y_mask = y_mask[:, :, dispose_conv1d_specs:-dispose_conv1d_specs]
     z_p = self.flow(z, y_mask, g=g_src)
     z_hat = self.flow(z_p, y_mask, g=g_tgt, reverse=True)
     o_hat = self.dec(z_hat * y_mask, g=g_tgt)
