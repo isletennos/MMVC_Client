@@ -303,7 +303,7 @@ class Hyperparameters():
         dispose_conv1d_specs = Hyperparameters.DISPOSE_CONV1D_SPECS
         dispose_specs =  dispose_stft_specs * 2 + dispose_conv1d_specs * 2
         dispose_length = dispose_specs * hop_length
-        assert(delay_frames >= dispose_length + overlap_length)
+        assert delay_frames >= dispose_length + overlap_length, "delay_frames have to be larger than dispose_length + overlap_length"
 
         #第一節を取得する
         try:
