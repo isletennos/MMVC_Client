@@ -26,9 +26,7 @@ from logging import getLogger
 import tkinter as tk #add
 from tkinter import filedialog #add
 
-import keyboard
 import wave
-
 
 class Hyperparameters():
     CHANNELS = 1 #モノラル
@@ -44,6 +42,7 @@ class Hyperparameters():
     TARGET_ID = None
     USE_NR = None
     VOICE_LIST = None
+    VOICE_LABEL = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -61,7 +60,6 @@ class Hyperparameters():
     DISPOSE_CONV1D_SPECS = 0
     INPUT_FILENAME = None
     OUTPUT_FILENAME = None
-    
 
     def set_input_device_1(self, value):
         Hyperparameters.INPUT_DEVICE_1 = value
@@ -107,6 +105,9 @@ class Hyperparameters():
     def set_VOICE_LIST(self, value):
         Hyperparameters.VOICE_LIST = value
 
+    def set_VOICE_LABEL(self, value):
+        Hyperparameters.VOICE_LABEL = value
+
     def set_DELAY_FLAMES(self, value):
         Hyperparameters.DELAY_FLAMES = value
 
@@ -148,6 +149,7 @@ class Hyperparameters():
         self.set_OVERLAP(profile.vc_conf.overlap)
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
+        self.set_VOICE_LABEL(profile.others.voice_label)
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
         self.set_DISPOSE_STFT_SPECS(profile.vc_conf.dispose_stft_specs)
         self.set_DISPOSE_CONV1D_SPECS(profile.vc_conf.dispose_conv1d_specs)
@@ -294,6 +296,7 @@ class Hyperparameters():
                             output=True)
 
         with_bgm = (Hyperparameters.INPUT_DEVICE_2 != False)
+        with_voice_selector = (Hyperparameters.INPUT_FILENAME == None) # 入力ファイルがない場合は音声選択ウィンドウあり
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
@@ -303,11 +306,14 @@ class Hyperparameters():
         dispose_conv1d_specs = Hyperparameters.DISPOSE_CONV1D_SPECS
         dispose_specs =  dispose_stft_specs * 2 + dispose_conv1d_specs * 2
         dispose_length = dispose_specs * hop_length
-        assert(delay_frames >= dispose_length + overlap_length)
+        assert delay_frames >= dispose_length + overlap_length, "delay_frames have to be larger than dispose_length + overlap_length"
 
         #第一節を取得する
         try:
             print("準備が完了しました。VC開始します。")
+            if with_voice_selector:
+                voice_selector = VoiceSelector()
+                voice_selector.open_window()
 
             prev_wav_tail = bytes(0)
             in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
@@ -330,12 +336,9 @@ class Hyperparameters():
                     back_audio_output_stream.write(back_in_raw)
                     back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow=False) # 背景BGMを取得
 
-                #声id変更 数字キーの0～9で切り替え
-                for k in range(10) :
-                    if keyboard.is_pressed(str(k)) :
-                        if k < len(Hyperparameters.VOICE_LIST) :
-                            target_id = Hyperparameters.VOICE_LIST[k]
-                            print(f"voice id: {target_id}")
+                if with_voice_selector:
+                    target_id = voice_selector.voice_select_id
+                    voice_selector.update_window()
 
                 if Hyperparameters.VC_END_FLAG: #エスケープ
                     print("vc_finish")
@@ -352,6 +355,9 @@ class Hyperparameters():
             back_audio_output_stream.close()
             audio.terminate()
             print("Stop Streaming")    
+
+        if with_voice_selector:
+            voice_selector.close_window()
 
 class Transform_Data_By_Model():
     hann_window = {}
@@ -510,6 +516,51 @@ class MockStream:
         if self.fw != None:
             self.fw.close()
             self.fw = None
+
+class VoiceSelector():
+    def get_closure(self, button, id):
+
+        def on_click(event):
+            button.config(fg="red")
+            self.selected_button.config(fg="black")
+            self.selected_button = button
+            self.voice_select_id = id
+            #print(f"voice select id: {id}")
+
+        return on_click
+
+    def open_window(self):
+        self.voice_ids = Hyperparameters.VOICE_LIST
+        self.voice_labels = Hyperparameters.VOICE_LABEL
+
+        self.root_win = tk.Tk()
+        height = int(len(self.voice_ids) * 30)
+        self.root_win.geometry(f"200x{height}")
+        self.root_win.title("MMVC Client")
+        self.root_win.protocol("WM_DELETE_WINDOW", self.close_window)
+
+        self.button_list = []
+        self.selected_button = None
+        self.voice_select_id = self.voice_ids[0]
+
+        for voice_id, voice_label in zip(self.voice_ids, self.voice_labels):
+            button = tk.Button(self.root_win, text=f"{voice_label}")
+            if voice_id == self.voice_select_id:
+                button.config(fg="red")
+                self.selected_button = button
+            button_on_click = self.get_closure(button, voice_id)
+            button.bind("<Button-1>", button_on_click)
+            button.pack()
+            self.button_list.append(button)
+
+    def update_window(self):
+        self.root_win.update()
+
+    def close_window(self):
+        if self.root_win != None:
+            self.root_win.destroy()
+            self.root_win = None
+            Hyperparameters.VC_END_FLAG = True
 
 class VCPrifile():
   def __init__(self, **kwargs):
