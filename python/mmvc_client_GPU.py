@@ -609,8 +609,8 @@ if __name__ == '__main__':
             while True:  # 無限ループ
                 tkroot = tk.Tk()
                 tkroot.withdraw()
-                print('myprofile.json を選択して下さい')
-                typ = [('jsonファイル','*.json')]
+                print('myprofile.conf を選択して下さい')
+                typ = [('jsonファイル','*.conf')]
                 dir = './'
                 profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
                 tkroot.destroy()
@@ -631,7 +631,7 @@ if __name__ == '__main__':
                     continue
         else:
             profile_path = args[1]
-            print("起動時にmyprofile.jsonのパスが指定されました。")
+            print("起動時にmyprofile.confのパスが指定されました。")
             print(profile_path)
 
         params = config_get(profile_path)
