@@ -210,7 +210,7 @@ class Hyperparameters():
 
         return audio
 
-    def overlap_merge(self, now_wav, prev_wav, overlap_length):
+    def overlap_merge(self, prev_tail, now_head, overlap_length):
         """
         生成したwavデータを前回生成したwavデータとoverlap_lengthだけ重ねてグラデーション的にマージします
         終端のoverlap_lengthぶんは次回マージしてから再生するので削除します
@@ -221,15 +221,12 @@ class Hyperparameters():
         overlap_length: 重ねる長さ
         """
         if overlap_length == 0:
-            return now_wav
+            return bytes(0)
         gradation = np.arange(overlap_length) / overlap_length
-        now = np.frombuffer(now_wav, dtype='int16')
-        prev = np.frombuffer(prev_wav, dtype='int16')
-        now_head = now[:overlap_length]
-        prev_tail = prev[-overlap_length:]
-        merged = prev_tail * (1 - gradation) + now_head * gradation
-        overlapped = np.append(merged, now[overlap_length:-overlap_length])
-        signal = np.round(overlapped, decimals=0)
+        head = np.frombuffer(now_head, dtype='int16')
+        tail = np.frombuffer(prev_tail, dtype='int16')
+        merged = tail * (1 - gradation) + head * gradation
+        signal = np.round(merged, decimals=0)
         signal = signal.astype(np.int16).tobytes()
         return signal
 
@@ -309,40 +306,6 @@ class Hyperparameters():
 
         #第一節を取得する
         #remake
-        '''
-        try:
-            print("準備が完了しました。VC開始します。")
-            num = 0
-            if with_voice_selector:
-                voice_selector = VoiceSelector()
-                voice_selector.open_window()
-            prev_wav_tail = num.to_bytes(2, 'big') * Hyperparameters.SEGMENT_SIZE
-            #0 : 0 : 0 : 0 : A(new)
-            prev_wav_tail = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-            #0 : 0 : 0 : A(new)
-            prev_wav_tail = prev_wav_tail[delay_frames * wav_bytes:]
-            print(len(prev_wav_tail))
-            #0 : 0 : 0 : a
-            trans_wav = self.audio_trans_GPU(tdbm, prev_wav_tail, net_g, noise_data, target_id, 0, 0)
-            #a
-            overlapped_wav = trans_wav[((Hyperparameters.SEGMENT_SIZE - delay_frames) * wav_bytes):]
-            print(len(overlapped_wav))
-            prev_overlapped_wav = overlapped_wav
-            while True:
-                #out a
-                audio_output_stream.write(overlapped_wav)
-                #0 : 0 : 0 : A : B(new)
-                prev_wav_tail = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                #0 : 0 : A : B(new)
-                prev_wav_tail = prev_wav_tail[delay_frames * wav_bytes : ]
-                #print(prev_wav_tail)
-                #0 : 0 : a : b
-                trans_wav = prev_wav_tail
-                #trans_wav = self.audio_trans_GPU(tdbm, prev_wav_tail, net_g, noise_data, target_id, 0, 0)
-                #b
-                overlapped_wav = trans_wav[((Hyperparameters.SEGMENT_SIZE - delay_frames) * wav_bytes):]
-        '''
-
         try:
             print("準備が完了しました。VC開始します。")
             num = 0
@@ -354,15 +317,15 @@ class Hyperparameters():
             prev_wav_tail = audio_input_stream.read(delay_frames, exception_on_overflow=False) + prev_wav_tail
             #A(new) : 0 : 0 : 0
             prev_wav_tail = prev_wav_tail[:Hyperparameters.SEGMENT_SIZE * wav_bytes]
-            #print(prev_wav_tail)
             #a : 0 : 0 : 0
             trans_wav = self.audio_trans_GPU(tdbm, prev_wav_tail, net_g, noise_data, target_id, 0, 0)
             #a
-            overlapped_wav = trans_wav[:delay_frames * wav_bytes]
-            print(len(overlapped_wav))
-            prev_overlapped_wav = overlapped_wav
+            pre_overlapped_wav = trans_wav[:delay_frames * wav_bytes]
+            ## over lap処理　a -> a[:overlap] a_hat[overlap:]
+            overlapped_wav = pre_overlapped_wav[:-(overlap_length * wav_bytes)]
+            prev_overlap_tail = pre_overlapped_wav[-(overlap_length * wav_bytes):]
             while True:
-                #out a
+                #out a (a[:overlap])
                 audio_output_stream.write(overlapped_wav)
                 #B(new) : A : 0 : 0 : 0
                 prev_wav_tail = audio_input_stream.read(delay_frames, exception_on_overflow=False) + prev_wav_tail
@@ -370,46 +333,18 @@ class Hyperparameters():
                 prev_wav_tail = prev_wav_tail[:Hyperparameters.SEGMENT_SIZE * wav_bytes]
                 #print(prev_wav_tail)
                 #b : a : 0 : 0
-                trans_wav = prev_wav_tail
-                #trans_wav = self.audio_trans_GPU(tdbm, prev_wav_tail, net_g, noise_data, target_id, 0, 0)
+                trans_wav = self.audio_trans_GPU(tdbm, prev_wav_tail, net_g, noise_data, target_id, 0, 0)
                 #b
-                overlapped_wav = trans_wav[:delay_frames * wav_bytes]
+                pre_overlapped_wav = trans_wav[:delay_frames * wav_bytes]
+                ## overlap処理 b -> b_head[overlap:] b_hat[overlap:] b_body[overlap:overlap]
+                overlapped_wav = pre_overlapped_wav[:-(overlap_length * wav_bytes)]
+                overlap_head = pre_overlapped_wav[:(overlap_length * wav_bytes)]
+                pre_overlapped_wav_body = pre_overlapped_wav[(overlap_length * wav_bytes):-(overlap_length * wav_bytes)]
+                ## prev_tail + b_head
+                merged = self.overlap_merge(prev_overlap_tail, overlap_head, overlap_length)
+                overlapped_wav = merged + pre_overlapped_wav_body
+                prev_overlap_tail = pre_overlapped_wav[-(overlap_length * wav_bytes):]
 
-            
-
-            num = 0
-            first_padding = num.to_bytes(2, 'big') * (Hyperparameters.SEGMENT_SIZE - delay_frames)
-            prev_wav_tail = first_padding
-            in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-            print(len(in_wav))
-            trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, 0, 0) # 遅延減らすため初回だけpadding対策使わない
-            print(len(trans_wav))
-            overlapped_wav = trans_wav[-(delay_frames * wav_bytes):]
-            prev_trans_wav = trans_wav[-(delay_frames * wav_bytes):]
-            print(len(overlapped_wav))
-            if dispose_length + overlap_length != 0:
-                prev_wav_tail = in_wav[-((delay_frames) * wav_bytes):] # 次回の頭のデータとして終端データを保持する
-            if with_bgm:
-                back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
-            while True:
-                audio_output_stream.write(overlapped_wav)
-                in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs)
-                overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
-                prev_trans_wav = trans_wav
-                if dispose_length + overlap_length != 0:
-                    prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 今回の終端の捨てデータぶんだけ次回の頭のデータとして保持する
-                if with_bgm:
-                    back_audio_output_stream.write(back_in_raw)
-                    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow=False) # 背景BGMを取得
-
-                if with_voice_selector:
-                    target_id = voice_selector.voice_select_id
-                    voice_selector.update_window()
-
-                if Hyperparameters.VC_END_FLAG: #エスケープ
-                    print("vc_finish")
-                    break
 
         except KeyboardInterrupt:
             audio_input_stream.stop_stream()
