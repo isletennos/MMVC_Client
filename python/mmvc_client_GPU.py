@@ -28,6 +28,8 @@ from tkinter import filedialog #add
 
 import wave
 
+import math
+
 class Hyperparameters():
     CHANNELS = 1 #モノラル
     FORMAT = pyaudio.paInt16
@@ -228,7 +230,8 @@ class Hyperparameters():
         prev = np.frombuffer(prev_wav, dtype='int16')
         now_head = now[:overlap_length]
         prev_tail = prev[-overlap_length:]
-        merged = prev_tail * (1 - gradation) + now_head * gradation
+        merged = prev_tail * (np.cos(gradation * np.pi * 0.5) ** 2) + now_head * (np.cos((1-gradation) * np.pi * 0.5) ** 2)
+        #merged = prev_tail * (1 - gradation) + now_head * gradation
         overlapped = np.append(merged, now[overlap_length:-overlap_length])
         signal = np.round(overlapped, decimals=0)
         signal = signal.astype(np.int16).tobytes()
