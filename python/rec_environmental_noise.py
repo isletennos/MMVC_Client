@@ -114,8 +114,8 @@ if __name__ == '__main__':
         while True:  # 無限ループ
             tkroot = tk.Tk()
             tkroot.withdraw()
-            print('myprofile.json を選択して下さい')
-            typ = [('jsonファイル','*.json')]
+            print('myprofile.conf を選択して下さい')
+            typ = [('confファイル','*.conf')]
             dir = './'
             profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
             tkroot.destroy()
