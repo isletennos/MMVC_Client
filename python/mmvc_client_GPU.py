@@ -62,6 +62,7 @@ class Hyperparameters():
     DISPOSE_CONV1D_SPECS = 0
     INPUT_FILENAME = None
     OUTPUT_FILENAME = None
+    GPU_ID = 0
 
     def set_input_device_1(self, value):
         Hyperparameters.INPUT_DEVICE_1 = value
@@ -125,6 +126,9 @@ class Hyperparameters():
     def set_OUTPUT_FILENAME(self, value):
         Hyperparameters.OUTPUT_FILENAME = value
 
+    def set_GPU_ID(self, value):
+        Hyperparameters.GPU_ID = value
+
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
         if type(profile.device.input_device1) == str:
@@ -159,6 +163,7 @@ class Hyperparameters():
             self.set_INPUT_FILENAME(profile.others.input_filename)
         if hasattr(profile.others, "output_filename"):
             self.set_OUTPUT_FILENAME(profile.others.output_filename)
+        self.set_GPU_ID(profile.device.gpu_id)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -202,10 +207,10 @@ class Hyperparameters():
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
                 wav = wav[:, dispose_stft_length:-dispose_stft_length]
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
-            x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda() for x in data]
+            x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
 
-            sid_target = torch.LongTensor([target_id]).cuda() # 話者IDはJVSの番号を100で割った余りです
-            audio = net_g.cuda().voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
+            sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
+            audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
         audio = audio * Hyperparameters.MAX_WAV_VALUE
         audio = audio.astype(np.int16).tobytes()
