@@ -63,6 +63,7 @@ class Hyperparameters():
     INPUT_FILENAME = None
     OUTPUT_FILENAME = None
     GPU_ID = 0
+    Voice_Selector_Flag = None
 
     def set_input_device_1(self, value):
         Hyperparameters.INPUT_DEVICE_1 = value
@@ -129,6 +130,9 @@ class Hyperparameters():
     def set_GPU_ID(self, value):
         Hyperparameters.GPU_ID = value
 
+    def set_Voice_Selector(self, value):
+        Hyperparameters.Voice_Selector_Flag = value
+
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
         if type(profile.device.input_device1) == str:
@@ -164,6 +168,7 @@ class Hyperparameters():
         if hasattr(profile.others, "output_filename"):
             self.set_OUTPUT_FILENAME(profile.others.output_filename)
         self.set_GPU_ID(profile.device.gpu_id)
+        self.set_Voice_Selector(profile.others.voice_selector)
 
     def launch_model(self):
         hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
@@ -305,6 +310,7 @@ class Hyperparameters():
 
         with_bgm = (Hyperparameters.INPUT_DEVICE_2 != False)
         with_voice_selector = (Hyperparameters.INPUT_FILENAME == None) # 入力ファイルがない場合は音声選択ウィンドウあり
+        voice_selector_flag = Hyperparameters.Voice_Selector_Flag # 音声選択ウィンドウの有無
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
@@ -319,7 +325,7 @@ class Hyperparameters():
         #第一節を取得する
         try:
             print("準備が完了しました。VC開始します。")
-            if with_voice_selector:
+            if with_voice_selector and voice_selector_flag:
                 voice_selector = VoiceSelector()
                 voice_selector.open_window()
 
@@ -344,7 +350,7 @@ class Hyperparameters():
                     back_audio_output_stream.write(back_in_raw)
                     back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow=False) # 背景BGMを取得
 
-                if with_voice_selector:
+                if with_voice_selector and voice_selector_flag:
                     target_id = voice_selector.voice_select_id
                     voice_selector.update_window()
 
@@ -364,7 +370,7 @@ class Hyperparameters():
             audio.terminate()
             print("Stop Streaming")    
 
-        if with_voice_selector:
+        if with_voice_selector and voice_selector_flag:
             voice_selector.close_window()
 
 class Transform_Data_By_Model():
