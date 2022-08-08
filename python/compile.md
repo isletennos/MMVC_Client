@@ -4,4 +4,5 @@ nuitka --standalone --mingw64 --follow-imports --windows-icon-from-ico=D:\GitRep
 2)llvmlite.dll がないといわれるので、pythonの環境からllvmliteディレクトリを直接持ってくる
 3)librosa\... がないといわれるので、
 4)cannot load filter definition for kaiser best と言われるので、python環境から、resampyを持ってくる
+5)_sounddevice_dataも持ってくる
 
