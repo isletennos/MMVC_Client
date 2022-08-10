@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*
 import pyaudio
+import sounddevice as sd
 import wave
 import numpy as np
 import time
 import json
+import os
+
+#ファイルダイアログ関連
+import tkinter as tk #add
+from tkinter import filedialog #add
 
 class VCPrifile():
   def __init__(self, **kwargs):
@@ -38,48 +44,28 @@ class VCPrifile():
 
 def config_get(conf):
     config_path = conf
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         data = f.read()
     config = json.loads(data)
     hparams = VCPrifile(**config)
     return hparams
 
-def MakeWavFile():
+def MakeWavFile(profile_path):
     chunk = 1024
-    while True:  # 無限ループ
-        print('学習済みモデルのサンプリングレートを指定してください。')
-        try:
-            sr = int(input('>> '))
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('数字以外が入力されました。数字のみを入力してください')
-            continue
-        break
-
-    while True:  # 無限ループ
-        print('「myprofile.json」のパスを入力してください。')
-        profile_path = input('>> ')
-        try:
-            if profile_path:
-                break
-            else:
-                print('ファイルが存在しません')
-                continue
-    
-        except ValueError:
-            # ValueError例外を処理するコード
-            print('パスを入力してください・')
-            continue
     
     params = config_get(profile_path)
     print(params.device.input_device1)
+    if type(params.device.input_device1) == str:
+        device_index = sd.query_devices().index(sd.query_devices(params.device.input_device1, 'input'))
+    else:
+        device_index = params.device.input_device1
 
     p = pyaudio.PyAudio()
     stream = p.open(format = pyaudio.paInt16,
                     channels = 1,
                     rate = sr,
                     input = True,
-                    input_device_index=params.device.input_device1,
+                    input_device_index = device_index,
                     frames_per_buffer = chunk)
     #レコード開始
     print("あなたの環境ノイズを録音します。マイクの電源を入れて、何もせずに待機していてください。")
@@ -112,4 +98,47 @@ def MakeWavFile():
     input()
 
 if __name__ == '__main__':
-    MakeWavFile()
+    try: #add
+        #サンプリングレートの指定
+        while True:  # 無限ループ
+            print('学習済みモデルのサンプリングレートを指定してください。')
+            try:
+                sr = int(input('>> '))
+            except ValueError:
+                # ValueError例外を処理するコード
+                print('数字以外が入力されました。数字のみを入力してください')
+                continue
+            break
+
+        end_counter = 0
+        while True:  # 無限ループ
+            tkroot = tk.Tk()
+            tkroot.withdraw()
+            print('myprofile.conf を選択して下さい')
+            typ = [('confファイル','*.conf')]
+            dir = './'
+            profile_path = filedialog.askopenfilename(filetypes = typ, initialdir = dir)
+            tkroot.destroy()
+            try:
+                if profile_path:
+                    MakeWavFile(profile_path)
+                    break
+                else:
+                    print('ファイルが存在しません')
+                    end_counter = end_counter + 1
+                    print(end_counter)
+                    if end_counter > 3:
+                        break
+                    continue
+        
+            except Exception as e:
+                # ValueError例外を処理するコード
+                print(profile_path)
+                print(e)
+                print('パスを入力してください・')
+                continue
+                
+    except Exception as e:
+        print('エラーが発生しました。')
+        print(e)
+        os.system('PAUSE')
