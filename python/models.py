@@ -230,6 +230,7 @@ class PosteriorEncoder(nn.Module):
     self.pre = nn.Conv1d(in_channels, hidden_channels, 1)
     self.enc = modules.WN(hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels=gin_channels)
     self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
+    self.randn = torch.randn(1, 1, 1) # ダミーで初期化
 
   def forward(self, x, x_lengths, g=None):
     x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
@@ -237,7 +238,9 @@ class PosteriorEncoder(nn.Module):
     x = self.enc(x, x_mask, g=g)
     stats = self.proj(x) * x_mask
     m, logs = torch.split(stats, self.out_channels, dim=1)
-    z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
+    if self.randn.size() != m.size(): # m の形が違う時だけ生成
+      self.randn = torch.randn_like(m)
+    z = (m + self.randn * torch.exp(logs)) * x_mask
     return z, m, logs, x_mask
 
 
