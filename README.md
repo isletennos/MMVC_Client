@@ -16,9 +16,9 @@ https://github.com/isletennos/MMVC_Trainer
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからGPU版をダウンロードして、展開してください。(ファイルサイズが非常に大きいので注意)  
-[MMVC_client v0.2.2.0(GPU ver)](https://drive.google.com/file/d/1MyIvxZ19BovpSsTZSNedofwSARmeaNH6/view?usp=sharing)  
+[MMVC_client v0.3.0.0(GPU ver)](https://drive.google.com/file/d/1QXJQAnTOr8vE5nwxInUROtj-fiHeJsXH/view?usp=sharing)  
 #### ファイルサイズが大きすぎてDLできない人向けの分割版
-[MMVC_client v0.2.2.0(GPU ver)](https://drive.google.com/drive/folders/1N8GEaIwVBQmwf-Nqs4QHoWSEs8fQfb5n?usp=sharing)  
+[MMVC_client v0.3.0.0(GPU ver)](https://drive.google.com/drive/folders/1eoDBw37WT7wJsAXh-RIXvXLvbSwnDtt9?usp=sharing)  
 
 ### 旧ver
 [MMVC_client v0.2.0.1(GPU ver)](https://drive.google.com/file/d/1JEvYw4vjiBwhsZq79Pb0Doh7Fy16dK76/view?usp=sharing)  
@@ -26,11 +26,11 @@ https://github.com/isletennos/MMVC_Trainer
 [MMVC_client 無印(GPU ver)](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
 
 #### TrainnerとClientの対応表
-| ver 対応表                | MMVC Trainner v1.2.0.x | MMVC Trainner v1.2.1.x | MMVC Trainner v1.2.2.x | 
+| ver 対応表                | MMVC Trainner v1.2.0.x | MMVC Trainner v1.2.1.x | MMVC Trainner v1.3.0.x | 
 | ------------------------- | ---------------------- | ---------------------- | ---------------------- | 
 | MMVC Client 無印(CPU/GPU) | 〇                     | 〇                     | ×
 | MMVC Client v0.2.0.x(GPU) | 〇                     | 〇                     | ×
-| MMVC Client v0.2.2.x(GPU) | ×                     | ×                     | 〇
+| MMVC Client v0.3.0.x(GPU) | ×                     | ×                     | 〇
 
 ## Install(python)
 このリポジトリをダウンロードして、展開してください。  
