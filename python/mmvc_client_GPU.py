@@ -212,10 +212,14 @@ class Hyperparameters():
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
                 wav = wav[:, dispose_stft_length:-dispose_stft_length]
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
-            x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-
-            sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-            audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
+            if Hyperparameters.GPU_ID != False:
+                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
+                audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
+            else:
+                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
+                audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
         audio = audio * Hyperparameters.MAX_WAV_VALUE
         audio = audio.astype(np.int16).tobytes()
