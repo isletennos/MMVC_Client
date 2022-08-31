@@ -173,10 +173,13 @@ class Hyperparameters():
         self.set_Voice_Selector(profile.others.voice_selector)
 
     def launch_model(self):
+        if self.hps.model.use_mel_train:
+            channels = self.hps.data.n_mel_channels
+        else:
+            channels = self.hps.data.filter_length // 2 + 1
         net_g = SynthesizerTrn(
             len(symbols),
-            # self.hps.data.filter_length // 2 + 1,
-            self.hps.data.n_mel_channels, # spec channels
+            channels,
             self.hps.train.segment_size // self.hps.data.hop_length,
             n_speakers=self.hps.data.n_speakers,
             **self.hps.model)
@@ -223,8 +226,10 @@ class Hyperparameters():
                     self.hps.data.sampling_rate,
                     self.hps.data.mel_fmin, 
                     self.hps.data.mel_fmax)
+                if self.hps.model.use_mel_train:
+                    spec = mel
                 sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(mel, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
+                audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 mel = spec_to_mel_torch(
@@ -234,8 +239,10 @@ class Hyperparameters():
                     self.hps.data.sampling_rate,
                     self.hps.data.mel_fmin, 
                     self.hps.data.mel_fmax)
+                if self.hps.model.use_mel_train:
+                    spec = mel
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                audio = net_g.voice_conversion(mel, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
+                audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
         audio = audio * Hyperparameters.MAX_WAV_VALUE
         audio = audio.astype(np.int16).tobytes()
