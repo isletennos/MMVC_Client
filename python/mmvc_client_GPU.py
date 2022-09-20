@@ -86,6 +86,8 @@ class Hyperparameters():
         Hyperparameters.HOP_LENGTH = self.hps.data.hop_length
         Hyperparameters.SEGMENT_SIZE = self.hps.train.segment_size
         Hyperparameters.N_SPEAKERS = self.hps.data.n_speakers
+        if not hasattr(self.hps.model, "use_mel_train"):
+            self.hps.model.use_mel_train = False
 
     def set_model_path(self, value):
         Hyperparameters.MODEL_PATH = value
