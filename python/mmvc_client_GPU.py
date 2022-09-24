@@ -12,6 +12,7 @@ import torch
 #user lib
 import utils
 from models import SynthesizerTrn
+from mel_processing import spec_to_mel_torch
 from text.symbols import symbols
 # from Shifter.shifter import Shifter
 import sounddevice as sd
@@ -64,6 +65,7 @@ class Hyperparameters():
     OUTPUT_FILENAME = None
     GPU_ID = 0
     Voice_Selector_Flag = None
+    hps = None
 
     def set_input_device_1(self, value):
         Hyperparameters.INPUT_DEVICE_1 = value
@@ -76,14 +78,16 @@ class Hyperparameters():
 
     def set_config_path(self, value):
         Hyperparameters.CONFIG_JSON_PATH = value
-        config = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
-        Hyperparameters.CONFIG_JSON_Body = config
-        Hyperparameters.SAMPLE_RATE = config.data.sampling_rate
-        Hyperparameters.MAX_WAV_VALUE = config.data.max_wav_value
-        Hyperparameters.FILTER_LENGTH = config.data.filter_length
-        Hyperparameters.HOP_LENGTH = config.data.hop_length
-        Hyperparameters.SEGMENT_SIZE = config.train.segment_size
-        Hyperparameters.N_SPEAKERS = config.data.n_speakers
+        self.hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
+        Hyperparameters.CONFIG_JSON_Body = self.hps
+        Hyperparameters.SAMPLE_RATE = self.hps.data.sampling_rate
+        Hyperparameters.MAX_WAV_VALUE = self.hps.data.max_wav_value
+        Hyperparameters.FILTER_LENGTH = self.hps.data.filter_length
+        Hyperparameters.HOP_LENGTH = self.hps.data.hop_length
+        Hyperparameters.SEGMENT_SIZE = self.hps.train.segment_size
+        Hyperparameters.N_SPEAKERS = self.hps.data.n_speakers
+        if not hasattr(self.hps.model, "use_mel_train"):
+            self.hps.model.use_mel_train = False
 
     def set_model_path(self, value):
         Hyperparameters.MODEL_PATH = value
@@ -171,13 +175,16 @@ class Hyperparameters():
         self.set_Voice_Selector(profile.others.voice_selector)
 
     def launch_model(self):
-        hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
+        if self.hps.model.use_mel_train:
+            channels = self.hps.data.n_mel_channels
+        else:
+            channels = self.hps.data.filter_length // 2 + 1
         net_g = SynthesizerTrn(
             len(symbols),
-            hps.data.filter_length // 2 + 1,
-            hps.train.segment_size // hps.data.hop_length,
-            n_speakers=hps.data.n_speakers,
-            **hps.model)
+            channels,
+            self.hps.train.segment_size // self.hps.data.hop_length,
+            n_speakers=self.hps.data.n_speakers,
+            **self.hps.model)
         _ = net_g.eval()
         #暫定872000
         _ = utils.load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
@@ -214,10 +221,28 @@ class Hyperparameters():
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
             if Hyperparameters.GPU_ID != False:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                mel = spec_to_mel_torch(
+                    spec, 
+                    self.hps.data.filter_length, 
+                    self.hps.data.n_mel_channels, 
+                    self.hps.data.sampling_rate,
+                    self.hps.data.mel_fmin, 
+                    self.hps.data.mel_fmax)
+                if self.hps.model.use_mel_train:
+                    spec = mel
                 sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
                 audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                mel = spec_to_mel_torch(
+                    spec, 
+                    self.hps.data.filter_length, 
+                    self.hps.data.n_mel_channels, 
+                    self.hps.data.sampling_rate,
+                    self.hps.data.mel_fmin, 
+                    self.hps.data.mel_fmax)
+                if self.hps.model.use_mel_train:
+                    spec = mel
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
