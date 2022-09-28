@@ -219,7 +219,7 @@ class Hyperparameters():
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
                 wav = wav[:, dispose_stft_length:-dispose_stft_length]
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
-            if Hyperparameters.GPU_ID != False:
+            if Hyperparameters.GPU_ID >= 0:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
                 mel = spec_to_mel_torch(
                     spec, 
