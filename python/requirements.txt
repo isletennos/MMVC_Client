@@ -1,6 +1,7 @@
 noisereduce==2.0.0
 numpy==1.21.1
-PyAudio==0.2.11
+#PyAudio==0.2.11
 sounddevice==0.4.4
 SoundFile==0.10.3.post1
-torch==1.8.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.8.1+cu111
