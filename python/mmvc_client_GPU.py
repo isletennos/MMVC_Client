@@ -3,33 +3,89 @@
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import sys
-import pyaudio
+import json
 import numpy as np
-
-#voice conversion
 import torch
-
-#user lib
-import utils
-from models import SynthesizerTrn
-from mel_processing import spec_to_mel_torch
-from text.symbols import symbols
-# from Shifter.shifter import Shifter
+import pyaudio
 import sounddevice as sd
 import soundfile as sf
+import wave
 #noice reduce
 import noisereduce as nr
-import json
-#use logging
-from logging import getLogger
-
 #ファイルダイアログ関連
 import tkinter as tk #add
 from tkinter import filedialog #add
 
-import wave
+#user lib
+from models import SynthesizerTrn
+from symbols import symbols
 
-import math
+
+def load_checkpoint(checkpoint_path, model, optimizer=None):
+  assert os.path.isfile(checkpoint_path), f"No such file or directory: {checkpoint_path}"
+  checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
+  iteration = checkpoint_dict['iteration']
+  learning_rate = checkpoint_dict['learning_rate']
+  if optimizer is not None:
+    optimizer.load_state_dict(checkpoint_dict['optimizer'])
+  saved_state_dict = checkpoint_dict['model']
+  if hasattr(model, 'module'):
+    state_dict = model.module.state_dict()
+  else:
+    state_dict = model.state_dict()
+  new_state_dict= {}
+  for k, v in state_dict.items():
+    try:
+      new_state_dict[k] = saved_state_dict[k]
+    except:
+      new_state_dict[k] = v
+  if hasattr(model, 'module'):
+    model.module.load_state_dict(new_state_dict)
+  else:
+    model.load_state_dict(new_state_dict)
+  return model, optimizer, learning_rate, iteration
+
+
+def get_hparams_from_file(config_path):
+  with open(config_path, "r", encoding="utf-8") as f:
+    data = f.read()
+  config = json.loads(data)
+
+  hparams =HParams(**config)
+  return hparams
+
+
+class HParams():
+  def __init__(self, **kwargs):
+    for k, v in kwargs.items():
+      if type(v) == dict:
+        v = HParams(**v)
+      self[k] = v
+    
+  def keys(self):
+    return self.__dict__.keys()
+
+  def items(self):
+    return self.__dict__.items()
+
+  def values(self):
+    return self.__dict__.values()
+
+  def __len__(self):
+    return len(self.__dict__)
+
+  def __getitem__(self, key):
+    return getattr(self, key)
+
+  def __setitem__(self, key, value):
+    return setattr(self, key, value)
+
+  def __contains__(self, key):
+    return key in self.__dict__
+
+  def __repr__(self):
+    return self.__dict__.__repr__()
+
 
 class Hyperparameters():
     CHANNELS = 1 #モノラル
@@ -78,7 +134,7 @@ class Hyperparameters():
 
     def set_config_path(self, value):
         Hyperparameters.CONFIG_JSON_PATH = value
-        self.hps = utils.get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
+        self.hps = get_hparams_from_file(Hyperparameters.CONFIG_JSON_PATH)
         Hyperparameters.CONFIG_JSON_Body = self.hps
         Hyperparameters.SAMPLE_RATE = self.hps.data.sampling_rate
         Hyperparameters.MAX_WAV_VALUE = self.hps.data.max_wav_value
@@ -187,7 +243,7 @@ class Hyperparameters():
             **self.hps.model)
         _ = net_g.eval()
         #暫定872000
-        _ = utils.load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
+        _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
         
@@ -221,28 +277,10 @@ class Hyperparameters():
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
             if Hyperparameters.GPU_ID >= 0:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                mel = spec_to_mel_torch(
-                    spec, 
-                    self.hps.data.filter_length, 
-                    self.hps.data.n_mel_channels, 
-                    self.hps.data.sampling_rate,
-                    self.hps.data.mel_fmin, 
-                    self.hps.data.mel_fmax)
-                if self.hps.model.use_mel_train:
-                    spec = mel
                 sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
                 audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
-                mel = spec_to_mel_torch(
-                    spec, 
-                    self.hps.data.filter_length, 
-                    self.hps.data.n_mel_channels, 
-                    self.hps.data.sampling_rate,
-                    self.hps.data.mel_fmin, 
-                    self.hps.data.mel_fmax)
-                if self.hps.model.use_mel_train:
-                    spec = mel
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0][0,0].data.cpu().float().numpy()
 
@@ -411,7 +449,7 @@ class Transform_Data_By_Model():
     CONFIG = None
     def __init__(self):
         self.G_HP = Hyperparameters()
-        self.HPS = utils.get_hparams_from_file(self.G_HP.CONFIG_JSON_PATH)
+        self.HPS = get_hparams_from_file(self.G_HP.CONFIG_JSON_PATH)
         #define samplerate
         self.SAMPLE_RATE =self.HPS.data.sampling_rate
         #define filter size
@@ -688,6 +726,3 @@ if __name__ == '__main__':
         print('エラーが発生しました。')
         print(e)
         os.system('PAUSE')
-
-
-    

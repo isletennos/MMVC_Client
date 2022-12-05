@@ -2,12 +2,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-import commons
 import modules
 
 from torch.nn import Conv1d, ConvTranspose1d
 from torch.nn.utils import weight_norm, remove_weight_norm
-from commons import init_weights
+from commons import init_weights, sequence_mask
 
 
 class ResidualCouplingBlock(nn.Module):
@@ -67,7 +66,7 @@ class PosteriorEncoder(nn.Module):
     self.randn = torch.randn(1, 1, 1) # ダミーで初期化
 
   def forward(self, x, x_lengths, g=None):
-    x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
+    x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
     x = self.pre(x) * x_mask
     x = self.enc(x, x_mask, g=g)
     stats = self.proj(x) * x_mask
