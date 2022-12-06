@@ -11,7 +11,7 @@ import sounddevice as sd
 import soundfile as sf
 import wave
 #noice reduce
-#import noisereduce as nr
+import noisereduce as nr
 #ファイルダイアログ関連
 import tkinter as tk #add
 from tkinter import filedialog #add
@@ -256,8 +256,8 @@ class Hyperparameters():
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
         signal = signal / Hyperparameters.MAX_WAV_VALUE
-        #if Hyperparameters.USE_NR:
-        #    signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
+        if Hyperparameters.USE_NR:
+            signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
         # any to many への取り組み(失敗)
         # f0を変えるだけでは枯れた声は直らなかった
         #f0trans = Shifter(Hyperparameters.SAMPLE_RATE, 1.75, frame_ms=20, shift_ms=10)
