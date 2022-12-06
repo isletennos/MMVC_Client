@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+url = "https://download.pytorch.org/whl/cu111/"
+verify_ssl = true
+name = "downloadpytorch"
+
+[packages]
+torch = {version = "==1.8.1+cu111", index = "downloadpytorch"}
+noisereduce = "==2.0.0"
+numpy = "==1.21.1"
+sounddevice = "==0.4.4"
+SoundFile = "==0.10.3.post1"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
