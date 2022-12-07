@@ -63,7 +63,7 @@ class PosteriorEncoder(nn.Module):
     self.pre = nn.Conv1d(in_channels, hidden_channels, 1)
     self.enc = modules.WN(hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels=gin_channels)
     self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
-    self.randn = torch.randn(1, 1, 1) # ダミーで初期化
+    #self.randn = torch.randn(1, 1, 1) # ダミーで初期化
 
   def forward(self, x, x_lengths, g=None):
     x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
@@ -71,8 +71,8 @@ class PosteriorEncoder(nn.Module):
     x = self.enc(x, x_mask, g=g)
     stats = self.proj(x) * x_mask
     m, logs = torch.split(stats, self.out_channels, dim=1)
-    if self.randn.size() != m.size(): # m の形が違う時だけ生成
-      self.randn = torch.randn_like(m)
+    #if self.randn.size() != m.size(): # m の形が違う時だけ生成
+    self.randn = torch.randn_like(m)
     z = (m + self.randn * torch.exp(logs)) * x_mask
     return z, m, logs, x_mask
 
@@ -190,6 +190,9 @@ class SynthesizerTrn(nn.Module):
     if n_speakers > 1:
       self.emb_g = nn.Embedding(n_speakers, gin_channels)
 
+  def forward(self, y, y_lengths, sid_src, sid_tgt, dispose_conv1d_specs=0):
+    return self.voice_conversion(y, y_lengths, sid_src, sid_tgt, dispose_conv1d_specs)
+
   def voice_conversion(self, y, y_lengths, sid_src, sid_tgt, dispose_conv1d_specs=0):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
     g_src = self.emb_g(sid_src).unsqueeze(-1)
@@ -201,4 +204,4 @@ class SynthesizerTrn(nn.Module):
     z_p = self.flow(z, y_mask, g=g_src)
     z_hat = self.flow(z_p, y_mask, g=g_tgt, reverse=True)
     o_hat = self.dec(z_hat * y_mask, g=g_tgt)
-    return o_hat, y_mask, (z, z_p, z_hat)
+    return o_hat

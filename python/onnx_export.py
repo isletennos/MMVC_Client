@@ -2,8 +2,8 @@ import argparse
 import time
 import json
 
-import numpy as np
 import onnx
+from onnxsim import simplify
 import onnxruntime as ort
 import torch
 
@@ -62,7 +62,8 @@ def get_args():
 
 def main(args):
     hps = get_hparams_from_file(args.config_file)
-    device = torch.device("cuda")
+    #device = torch.device("cuda")
+    device = torch.device("cpu")
     net_g = SynthesizerTrn(
         len(symbols),
         hps.data.filter_length // 2 + 1,
@@ -74,68 +75,72 @@ def main(args):
     _ = net_g.eval()
 
     # ONNXへの切り替え
-    test_hidden_unit = torch.rand(1, 50, 256)
-    test_lengths = torch.LongTensor([50])
-    test_pitch = (torch.rand(1, 50) * 128).long()
-    test_sid = torch.LongTensor([0])
-    input_names = ["hidden_unit", "lengths", "pitch", "sid"]
-    output_names = ["audio", ]
+    dummy_specs = torch.rand(1, 257, 32)
+    dummy_lengths = torch.LongTensor([32])
+    dummy_sid_src = torch.LongTensor([0])
+    dummy_sid_tgt = torch.LongTensor([1])
+    inputs = (dummy_specs, dummy_lengths, dummy_sid_src, dummy_sid_tgt)
 
-    torch.onnx.export(net_g,
-                      (
-                          test_hidden_unit.to(device),
-                          test_lengths.to(device),
-                          test_pitch.to(device),
-                          test_sid.to(device)
-                      ),
-                      args.output_vits_onnx,
-                      dynamic_axes={
-                          "hidden_unit": [0, 1],
-                          "pitch": [1]
-                      },
-                      do_constant_folding=False,
-                      opset_version=13,
-                      verbose=False,
-                      input_names=input_names,
-                      output_names=output_names)
+    torch.onnx.export(
+        net_g,
+        inputs,
+        args.output_vits_onnx,
+        do_constant_folding=False,
+        opset_version=13,
+        verbose=False,
+        input_names=["specs", "lengths", "sid_src", "sid_tgt"],
+        output_names=["audio"],
+        dynamic_axes={
+            "specs": {2: "length"}
+        })
+    model_onnx2 = onnx.load(args.output_vits_onnx)
+    model_simp, check = simplify(model_onnx2)
+    onnx.save(model_simp, args.output_vits_onnx)
 
     sess_options = ort.SessionOptions()
-    ort_session = ort.InferenceSession(args.output_vits_onnx,
-                                       sess_options=sess_options,
-                                       providers=["CUDAExecutionProvider", ])
+    ort_session = ort.InferenceSession(
+        args.output_vits_onnx,
+        sess_options=sess_options,
+        providers=["CPUExecutionProvider"])
+#        providers=["CUDAExecutionProvider"])
 
     print("vits onnx benchmark")
     use_time_list = []
     for i in range(30):
         start = time.time()
-        outputs = ort_session.run(
-            output_names,
+        output = ort_session.run(
+            ["audio"],
             {
-                "hidden_unit": test_hidden_unit.numpy(),
-                "lengths": test_lengths.numpy(),
-                "pitch": test_pitch.numpy(),
-                "sid": test_sid.numpy(),
-
-                # "x": test_hidden_unit.numpy(),
-                # 'x_lengths': test_lengths.numpy(),
-                # 'sid': test_sid.numpy(),
-                # "noise_scale": [0.667], "length_scale": [1.0], "noise_scale_w": [0.8]
+                "specs": dummy_specs.numpy(),
+                "lengths": dummy_lengths.numpy(),
+                "sid_src": dummy_sid_src.numpy(),
+                "sid_tgt": dummy_sid_tgt.numpy()
             }
         )
         use_time = time.time() - start
         use_time_list.append(use_time)
-        print("use time:{}".format(use_time))
+        #print("use time:{}".format(use_time))
     use_time_list = use_time_list[5:]
     mean_use_time = sum(use_time_list) / len(use_time_list)
-    print("mean_use_time:{}".format(mean_use_time))
+    print("onnx mean_use_time:{}".format(mean_use_time))
+    onnx_output = output[0]
 
-    onnx_output = outputs[0]
-    origin_output = net_g(*(
-        test_hidden_unit.to(device),
-        test_lengths.to(device),
-        test_pitch.to(device),
-        test_sid.to(device)
-    )).detach().cpu().numpy()
+    use_time_list = []
+    for i in range(30):
+        start = time.time()
+        origin_output = net_g(*(
+            dummy_specs.to(device),
+            dummy_lengths.to(device),
+            dummy_sid_src.to(device),
+            dummy_sid_tgt.to(device)
+        )).data.cpu().float().numpy()
+        use_time = time.time() - start
+        use_time_list.append(use_time)
+        #print("use time:{}".format(use_time))
+    use_time_list = use_time_list[5:]
+    mean_use_time = sum(use_time_list) / len(use_time_list)
+    print("origin mean_use_time:{}".format(mean_use_time))
+
     assert onnx_output.shape == origin_output.shape
 
     print("Done")
