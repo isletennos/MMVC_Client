@@ -6,6 +6,7 @@ import sys
 import json
 import numpy as np
 import torch
+import onnxruntime as ort
 import pyaudio
 import sounddevice as sd
 import soundfile as sf
@@ -246,8 +247,14 @@ class Hyperparameters():
         _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
-        
-    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs):
+
+    def inspect_onnx(self, session):
+        for i in session.get_inputs():
+            print("name:{}\tshape:{}\tdtype:{}".format(i.name, i.shape, i.type))
+        for i in session.get_outputs():
+            print("name:{}\tshape:{}\tdtype:{}".format(i.name, i.shape, i.type))
+       
+    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_stft_length = dispose_stft_specs * hop_length
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
@@ -276,9 +283,19 @@ class Hyperparameters():
                 wav = wav[:, dispose_stft_length:-dispose_stft_length]
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
             if Hyperparameters.GPU_ID >= 0:
-                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0,0].data.cpu().float().numpy()
+                #x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                #sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
+                #audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0,0].data.cpu().float().numpy()
+                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
+                audio = ort_session.run(
+                    ["audio"],
+                    {
+                        "specs": spec.numpy(),
+                        "lengths": spec_lengths.numpy(),
+                        "sid_src": sid_src.numpy(),
+                        "sid_tgt": sid_target.numpy()
+                    })[0][0,0]
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
@@ -318,6 +335,11 @@ class Hyperparameters():
         audio = pyaudio.PyAudio()
         print("モデルを読み込んでいます。少々お待ちください。")
         net_g = self.launch_model()
+        ort_session = ort.InferenceSession(
+            "python\\test.onnx",
+            providers=["CPUExecutionProvider"])
+#            providers=["CUDAExecutionProvider"])
+        self.inspect_onnx(ort_session)
         tdbm = Transform_Data_By_Model()
 
         if Hyperparameters.USE_NR:
@@ -398,7 +420,7 @@ class Hyperparameters():
 
             prev_wav_tail = bytes(0)
             in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-            trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, 0, 0) # 遅延減らすため初回だけpadding対策使わない
+            trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, 0, 0, ort_session=ort_session) # 遅延減らすため初回だけpadding対策使わない
             overlapped_wav = trans_wav
             prev_trans_wav = trans_wav
             if dispose_length + overlap_length != 0:
@@ -408,7 +430,7 @@ class Hyperparameters():
             while True:
                 audio_output_stream.write(overlapped_wav)
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs)
+                trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
                 prev_trans_wav = trans_wav
                 if dispose_length + overlap_length != 0:

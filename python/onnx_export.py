@@ -1,3 +1,4 @@
+import os
 import argparse
 import time
 import json
@@ -15,8 +16,7 @@ def get_hparams_from_file(config_path):
   with open(config_path, "r", encoding="utf-8") as f:
     data = f.read()
   config = json.loads(data)
-
-  hparams =HParams(**config)
+  hparams = HParams(**config)
   return hparams
 
 
@@ -52,6 +52,31 @@ class HParams():
     return self.__dict__.__repr__()
 
 
+def load_checkpoint(checkpoint_path, model, optimizer=None):
+  assert os.path.isfile(checkpoint_path), f"No such file or directory: {checkpoint_path}"
+  checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
+  iteration = checkpoint_dict['iteration']
+  learning_rate = checkpoint_dict['learning_rate']
+  if optimizer is not None:
+    optimizer.load_state_dict(checkpoint_dict['optimizer'])
+  saved_state_dict = checkpoint_dict['model']
+  if hasattr(model, 'module'):
+    state_dict = model.module.state_dict()
+  else:
+    state_dict = model.state_dict()
+  new_state_dict= {}
+  for k, v in state_dict.items():
+    try:
+      new_state_dict[k] = saved_state_dict[k]
+    except:
+      new_state_dict[k] = v
+  if hasattr(model, 'module'):
+    model.module.load_state_dict(new_state_dict)
+  else:
+    model.load_state_dict(new_state_dict)
+  return model, optimizer, learning_rate, iteration
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", required=True)
@@ -64,6 +89,7 @@ def main(args):
     hps = get_hparams_from_file(args.config_file)
     #device = torch.device("cuda")
     device = torch.device("cpu")
+
     net_g = SynthesizerTrn(
         len(symbols),
         hps.data.filter_length // 2 + 1,
@@ -73,10 +99,12 @@ def main(args):
     for i in net_g.parameters():
         i.requires_grad = False
     _ = net_g.eval()
+    _ = load_checkpoint(args.input_vits_pt, net_g, None)
+    print("Model data loading succeeded.\nConverting start.")
 
     # ONNXへの切り替え
-    dummy_specs = torch.rand(1, 257, 32)
-    dummy_lengths = torch.LongTensor([32])
+    dummy_specs = torch.rand(1, 257, 60)
+    dummy_lengths = torch.LongTensor([60])
     dummy_sid_src = torch.LongTensor([0])
     dummy_sid_tgt = torch.LongTensor([1])
     inputs = (dummy_specs, dummy_lengths, dummy_sid_src, dummy_sid_tgt)
@@ -122,7 +150,7 @@ def main(args):
         #print("use time:{}".format(use_time))
     use_time_list = use_time_list[5:]
     mean_use_time = sum(use_time_list) / len(use_time_list)
-    print("onnx mean_use_time:{}".format(mean_use_time))
+    print(f"onnx mean_use_time: {mean_use_time}")
     onnx_output = output[0]
 
     use_time_list = []
@@ -139,7 +167,7 @@ def main(args):
         #print("use time:{}".format(use_time))
     use_time_list = use_time_list[5:]
     mean_use_time = sum(use_time_list) / len(use_time_list)
-    print("origin mean_use_time:{}".format(mean_use_time))
+    print(f"{device} origin mean_use_time: {mean_use_time}")
 
     assert onnx_output.shape == origin_output.shape
 
