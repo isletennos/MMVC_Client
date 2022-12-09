@@ -248,12 +248,6 @@ class Hyperparameters():
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
 
-    def inspect_onnx(self, session):
-        for i in session.get_inputs():
-            print("name:{}\tshape:{}\tdtype:{}".format(i.name, i.shape, i.type))
-        for i in session.get_outputs():
-            print("name:{}\tshape:{}\tdtype:{}".format(i.name, i.shape, i.type))
-       
     def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_stft_length = dispose_stft_specs * hop_length
@@ -285,7 +279,7 @@ class Hyperparameters():
             if Hyperparameters.GPU_ID >= 0:
                 #x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
                 #sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                #audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0,0].data.cpu().float().numpy()
+                #audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 audio = ort_session.run(
@@ -299,8 +293,11 @@ class Hyperparameters():
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target, dispose_conv1d_specs)[0,0].data.cpu().float().numpy()
+                audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
 
+        if dispose_conv1d_specs != 0:
+            # 出力されたwavでconv1d paddingの影響受けるところを削る
+            audio = audio[dispose_conv1d_length:-dispose_conv1d_length]
         audio = audio * Hyperparameters.MAX_WAV_VALUE
         audio = audio.astype(np.int16).tobytes()
 
@@ -336,10 +333,11 @@ class Hyperparameters():
         print("モデルを読み込んでいます。少々お待ちください。")
         net_g = self.launch_model()
         ort_session = ort.InferenceSession(
-            "python\\test.onnx",
+            "G\\multi_da\\G_50000.onnx",
+#            "python\\test.onnx",
             providers=["CPUExecutionProvider"])
 #            providers=["CUDAExecutionProvider"])
-        self.inspect_onnx(ort_session)
+#        self.inspect_onnx(ort_session)
         tdbm = Transform_Data_By_Model()
 
         if Hyperparameters.USE_NR:
