@@ -282,14 +282,17 @@ class Hyperparameters():
                 #audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                audio = ort_session.run(
-                    ["audio"],
-                    {
-                        "specs": spec.numpy(),
-                        "lengths": spec_lengths.numpy(),
-                        "sid_src": sid_src.numpy(),
-                        "sid_tgt": sid_target.numpy()
-                    })[0][0,0]
+                if spec.size()[2] >= 16:
+                    audio = ort_session.run(
+                        ["audio"],
+                        {
+                            "specs": spec.numpy(),
+                            "lengths": spec_lengths.numpy(),
+                            "sid_src": sid_src.numpy(),
+                            "sid_tgt": sid_target.numpy()
+                        })[0][0,0]
+                else:
+                    audio = np.array([0.0]) # dummy
             else:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
@@ -333,10 +336,12 @@ class Hyperparameters():
         print("モデルを読み込んでいます。少々お待ちください。")
         net_g = self.launch_model()
         ort_session = ort.InferenceSession(
-            "G\\multi_da\\G_50000.onnx",
+            "G\\20220928_multi_vcloss\\G_140000.onnx",
+#
+#            "G\\multi_da\\G_50000.onnx",
 #            "python\\test.onnx",
-            providers=["CPUExecutionProvider"])
-#            providers=["CUDAExecutionProvider"])
+#            providers=["CPUExecutionProvider"])
+            providers=["CUDAExecutionProvider"])
 #        self.inspect_onnx(ort_session)
         tdbm = Transform_Data_By_Model()
 
