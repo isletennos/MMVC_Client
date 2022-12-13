@@ -122,6 +122,8 @@ class Hyperparameters():
     OUTPUT_FILENAME = None
     GPU_ID = 0
     Voice_Selector_Flag = None
+    USE_ONNX = None
+    ONNX_PROVIDERS = None
     hps = None
 
     def set_input_device_1(self, value):
@@ -194,6 +196,13 @@ class Hyperparameters():
     def set_Voice_Selector(self, value):
         Hyperparameters.Voice_Selector_Flag = value
 
+    def set_USE_ONNX(self, value):
+        Hyperparameters.USE_ONNX = value
+
+    def set_ONNX_PROVIDERS(self, value):
+        Hyperparameters.ONNX_PROVIDERS = value
+
+
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
         if type(profile.device.input_device1) == str:
@@ -230,6 +239,9 @@ class Hyperparameters():
             self.set_OUTPUT_FILENAME(profile.others.output_filename)
         self.set_GPU_ID(profile.device.gpu_id)
         self.set_Voice_Selector(profile.others.voice_selector)
+        if hasattr(profile.vc_conf, "onnx"):
+            self.set_USE_ONNX(profile.vc_conf.onnx.use_onnx)
+            self.set_ONNX_PROVIDERS(profile.vc_conf.onnx.onnx_providers)
 
     def launch_model(self):
         if self.hps.model.use_mel_train:
@@ -245,10 +257,9 @@ class Hyperparameters():
         _ = net_g.eval()
         #暫定872000
         _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
-        print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         return net_g
 
-    def audio_trans_GPU(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
+    def audio_trans(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_stft_length = dispose_stft_specs * hop_length
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
@@ -276,13 +287,10 @@ class Hyperparameters():
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
                 wav = wav[:, dispose_stft_length:-dispose_stft_length]
             data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
-            if Hyperparameters.GPU_ID >= 0:
-                #x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                #sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                #audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+            if Hyperparameters.USE_ONNX:
                 x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                if spec.size()[2] >= 16:
+                if spec.size()[2] >= 8:
                     audio = ort_session.run(
                         ["audio"],
                         {
@@ -294,9 +302,14 @@ class Hyperparameters():
                 else:
                     audio = np.array([0.0]) # dummy
             else:
-                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
-                sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                if Hyperparameters.GPU_ID >= 0:
+                    x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                    sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
+                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                else:
+                    x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                    sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
+                    audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
             # 出力されたwavでconv1d paddingの影響受けるところを削る
@@ -334,15 +347,15 @@ class Hyperparameters():
     def vc_run(self):
         audio = pyaudio.PyAudio()
         print("モデルを読み込んでいます。少々お待ちください。")
-        net_g = self.launch_model()
-        ort_session = ort.InferenceSession(
-            "G\\20220928_multi_vcloss\\G_140000.onnx",
-#
-#            "G\\multi_da\\G_50000.onnx",
-#            "python\\test.onnx",
-#            providers=["CPUExecutionProvider"])
-            providers=["CUDAExecutionProvider"])
-#        self.inspect_onnx(ort_session)
+        net_g = None
+        ort_session = None
+        if Hyperparameters.USE_ONNX :
+            ort_session = ort.InferenceSession(
+                Hyperparameters.MODEL_PATH,
+                providers=Hyperparameters.ONNX_PROVIDERS)
+        else:
+            net_g = self.launch_model()
+        print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         tdbm = Transform_Data_By_Model()
 
         if Hyperparameters.USE_NR:
@@ -423,7 +436,7 @@ class Hyperparameters():
 
             prev_wav_tail = bytes(0)
             in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-            trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, 0, 0, ort_session=ort_session) # 遅延減らすため初回だけpadding対策使わない
+            trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, 0, 0, ort_session=ort_session) # 遅延減らすため初回だけpadding対策使わない
             overlapped_wav = trans_wav
             prev_trans_wav = trans_wav
             if dispose_length + overlap_length != 0:
@@ -433,7 +446,7 @@ class Hyperparameters():
             while True:
                 audio_output_stream.write(overlapped_wav)
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans_GPU(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
+                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
                 prev_trans_wav = trans_wav
                 if dispose_length + overlap_length != 0:
