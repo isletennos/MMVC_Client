@@ -350,8 +350,13 @@ class Hyperparameters():
         net_g = None
         ort_session = None
         if Hyperparameters.USE_ONNX :
+            # DirectMLで動かすための設定
+            ort_options = ort.SessionOptions()
+            ort_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            ort_options.enable_mem_pattern = False
             ort_session = ort.InferenceSession(
                 Hyperparameters.MODEL_PATH,
+                sess_options=ort_options,
                 providers=Hyperparameters.ONNX_PROVIDERS)
         else:
             net_g = self.launch_model()

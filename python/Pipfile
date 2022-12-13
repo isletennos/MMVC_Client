@@ -16,6 +16,7 @@ sounddevice = "==0.4.4"
 SoundFile = "==0.10.3.post1"
 onnxruntime-gpu = "1.12.1"
 scikit-learn = "==1.0.2"
+onnxruntime-directml = "*"
 
 [dev-packages]
 
