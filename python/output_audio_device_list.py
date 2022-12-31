@@ -15,7 +15,7 @@ def main():
         devices = audio.get_device_info_by_index(x)
         try:
             device_name = devices['name'].encode('shift-jis').decode('utf-8')
-        except:
+        except UnicodeDecodeError:
             device_name = devices['name']
         
         device_name = device_name.replace(linesep, '') + ", " + host_apis[devices['hostApi']]
