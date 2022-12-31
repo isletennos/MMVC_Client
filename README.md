@@ -16,7 +16,7 @@ https://github.com/isletennos/MMVC_Trainer
 ## Install
 ### windows かつ 実行ファイルを利用する方
 下記URLからダウンロードして、自己解凍形式ファイルを実行して展開してください。(ファイルサイズが非常に大きいので注意)  
-[MMVC_client v0.3.1.0](https://github.com/isletennos/MMVC_Client/releases/tag/v0.3.3.0)  
+[MMVC_client v0.3.1.0](https://github.com/isletennos/MMVC_Client/releases/tag/v0.3.1.0)  
 
 ### 旧ver
 [MMVC_client v0.3.0.0(GPU ver)](https://drive.google.com/file/d/1QXJQAnTOr8vE5nwxInUROtj-fiHeJsXH/view?usp=sharing)  
