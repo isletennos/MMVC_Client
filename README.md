@@ -27,7 +27,7 @@ https://github.com/isletennos/MMVC_Trainer
 [MMVC_client 無印(GPU ver)](https://drive.google.com/file/d/1XNdfT3BFGKlxDm43hEbYvnoJSecjLedt/view?usp=sharing)  
 
 #### TrainerとClientの対応表
-| MMVC Trainer ver          | v1.2.x.x | v1.3.0.x | 1.3.3.x | 1.3.3.x(ONNX) |
+| MMVC Trainer ver          | v1.2.x.x | v1.3.0.x | 1.3.2.x | 1.3.2.x(ONNX) |
 | ------------------------- | -------- | -------- | ------- | ------------- |
 | MMVC Client 無印(CPU/GPU)  | 〇       | ×        | ×      | ×             |
 | MMVC Client v0.2.0.x(GPU) | 〇       | ×        | ×      | ×             |
