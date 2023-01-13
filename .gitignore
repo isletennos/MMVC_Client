@@ -132,6 +132,7 @@ old/
 rt-mmvc_client_CPU/rt-mmvc_client_CPU/*
 rt-mmvc_client_GPU/rt-mmvc_client_GPU/*
 audio_device_list.txt
+device_check.txt
 *.rar
 *.exe
 *.build/
