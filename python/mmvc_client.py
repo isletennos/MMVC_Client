@@ -19,7 +19,13 @@ from tkinter import filedialog #add
 
 #user lib
 from models import SynthesizerTrn
-from symbols import symbols
+
+#後でconfigで指定できるようにするパラメータ
+F0_SCALE = 1.0
+import time
+import pyworld as pw
+from scipy.interpolate import interp1d
+from features import SignalGenerator, dilated_factor
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None):
@@ -29,7 +35,13 @@ def load_checkpoint(checkpoint_path, model, optimizer=None):
   learning_rate = checkpoint_dict['learning_rate']
   if optimizer is not None:
     optimizer.load_state_dict(checkpoint_dict['optimizer'])
-  saved_state_dict = checkpoint_dict['model']
+  saved_state_dict = {
+    **checkpoint_dict['pe'],
+    **checkpoint_dict['flow'],
+    **checkpoint_dict['text_enc'], 
+    **checkpoint_dict['dec'],
+    **checkpoint_dict['emb_g']
+    }
   if hasattr(model, 'module'):
     state_dict = model.module.state_dict()
   else:
@@ -248,26 +260,73 @@ class Hyperparameters():
             channels = self.hps.data.n_mel_channels
         else:
             channels = self.hps.data.filter_length // 2 + 1
+
         net_g = SynthesizerTrn(
-            len(symbols),
-            channels,
-            self.hps.train.segment_size // self.hps.data.hop_length,
-            n_speakers=self.hps.data.n_speakers,
-            **self.hps.model)
+            spec_channels = channels,
+            segment_size = self.hps.train.segment_size // self.hps.data.hop_length,
+            inter_channels = self.hps.model.inter_channels,
+            hidden_channels = self.hps.model.hidden_channels,
+            upsample_rates = self.hps.model.upsample_rates,
+            upsample_initial_channel = self.hps.model.upsample_initial_channel,
+            upsample_kernel_sizes = self.hps.model.upsample_kernel_sizes,
+            n_flow = self.hps.model.n_flow,
+            dec_out_channels=1,
+            dec_kernel_size=7,
+            n_speakers = self.hps.data.n_speakers,
+            gin_channels = self.hps.model.gin_channels,
+            requires_grad_pe = self.hps.requires_grad.pe,
+            requires_grad_flow = self.hps.requires_grad.flow,
+            requires_grad_text_enc = self.hps.requires_grad.text_enc,
+            requires_grad_dec = self.hps.requires_grad.dec,
+            requires_grad_emb_g = self.hps.requires_grad.emb_g
+            )
         _ = net_g.eval()
         #暫定872000
         _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
         return net_g
 
+    #f0からcf0を推定する
+    def convert_continuos_f0(self, f0, f0_size):
+        """Convert F0 to continuous F0
+
+        Args:
+            f0 (ndarray): original f0 sequence with the shape (T)
+
+        Return:
+            (ndarray): continuous f0 with the shape (T)
+
+        """
+        # get start and end of f0
+        if (f0 == 0).all():
+            return np.zeros((f0_size,))
+        start_f0 = f0[f0 != 0][0]
+        end_f0 = f0[f0 != 0][-1]
+        # padding start and end of f0 sequence
+        cf0 = f0
+        start_idx = np.where(cf0 == start_f0)[0][0]
+        end_idx = np.where(cf0 == end_f0)[0][-1]
+        cf0[:start_idx] = start_f0
+        cf0[end_idx:] = end_f0
+        # get non-zero frame index
+        nz_frames = np.where(cf0 != 0)[0]
+        # perform linear interpolation
+        f = interp1d(nz_frames, cf0[nz_frames], bounds_error=False, fill_value=0.0)
+        return f(np.arange(0, f0_size))
+
     def audio_trans(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         hop_length = Hyperparameters.HOP_LENGTH
-        dispose_stft_length = dispose_stft_specs * hop_length
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
     
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
         signal = signal / Hyperparameters.MAX_WAV_VALUE
+        #F0推定テスト 5.5が奇跡的にぴったり
+        _f0, _time = pw.dio(signal, Hyperparameters.SAMPLE_RATE,frame_period = 5.5)    # 基本周波数の抽出
+        f0 = pw.stonemask(signal, _f0, _time, Hyperparameters.SAMPLE_RATE)  # 基本周波数の修正
+        f0 = self.convert_continuos_f0(f0, int(signal.shape[0] / hop_length))
+        f0 = torch.from_numpy(f0.astype(np.float32))
+
         if Hyperparameters.USE_NR:
             signal = nr.reduce_noise(y=signal, sr=Hyperparameters.SAMPLE_RATE, y_noise = noise_data, n_std_thresh_stationary=2.5,stationary=True)
         # any to many への取り組み(失敗)
@@ -280,15 +339,20 @@ class Hyperparameters():
         with torch.no_grad():
             #SID
             trans_length = signal.size()[0]
-            text, spec, wav, sid = tdbm.get_audio_text_speaker_pair(signal.view(1, trans_length), ["m", Hyperparameters.SOURCE_ID, "m"])
+            spec, sid = tdbm.get_audio_text_speaker_pair(signal.view(1, trans_length), Hyperparameters.SOURCE_ID)
             if dispose_stft_specs != 0:
                 # specの頭と終がstft paddingの影響受けるので2コマを削る
                 # wavもspecで削るぶんと同じだけ頭256と終256を削る
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
-                wav = wav[:, dispose_stft_length:-dispose_stft_length]
-            data = TextAudioSpeakerCollate()([(text, spec, wav, sid)])
+                f0 = f0[dispose_stft_specs:-dispose_stft_specs]
+            data = TextAudioSpeakerCollate(
+                sample_rate = Hyperparameters.SAMPLE_RATE,
+                hop_size = Hyperparameters.HOP_LENGTH,
+                f0_factor = F0_SCALE
+            )([(spec, sid, f0)])
+
             if Hyperparameters.USE_ONNX:
-                x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                spec, spec_lengths, sid_src, sin, d = data
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 if spec.size()[2] >= 8:
                     audio = ort_session.run(
@@ -303,13 +367,19 @@ class Hyperparameters():
                     audio = np.array([0.0]) # dummy
             else:
                 if Hyperparameters.GPU_ID >= 0:
-                    x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                    #spec, spec_lengths, sid_src, sin, d = [x.cuda(Hyperparameters.GPU_ID) for x in data]
+                    spec, spec_lengths, sid_src, sin, d = data
+                    spec = spec.cuda(Hyperparameters.GPU_ID)
+                    spec_lengths = spec_lengths.cuda(Hyperparameters.GPU_ID)
+                    sid_src = sid_src.cuda(Hyperparameters.GPU_ID)
+                    sin = sin.cuda(Hyperparameters.GPU_ID)
+                    d = tuple([d[:1].cuda(Hyperparameters.GPU_ID) for d in d])
                     sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
                 else:
-                    x, x_lengths, spec, spec_lengths, y, y_lengths, sid_src = [x for x in data]
+                    spec, spec_lengths, sid_src, sin, d = data
                     sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.voice_conversion(spec, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    audio = net_g.voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
             # 出力されたwavでconv1d paddingの影響受けるところを削る
@@ -520,12 +590,10 @@ class Transform_Data_By_Model():
         spec = torch.sqrt(spec.pow(2).sum(-1) + 1e-6)
         return spec
 
-    def get_audio_text_speaker_pair(self, wav, audiopath_sid_text):
-        _, sid, text = audiopath_sid_text[0], audiopath_sid_text[1], audiopath_sid_text[2]
-        text = self.get_text(text)
+    def get_audio_text_speaker_pair(self, wav, sid):
         spec = self.get_spec(wav)
         sid = self.get_sid(sid)
-        return (text, spec, wav, sid)
+        return (spec, sid)
 
     def get_spec(self, audio_norm):
         filter_length = self.FILTER_LENGTH
@@ -548,51 +616,84 @@ class Transform_Data_By_Model():
 class TextAudioSpeakerCollate():
     """ Zero-pads model inputs and targets
     """
-    def __init__(self, return_ids=False):
-        self.return_ids = return_ids
+    def __init__(
+        self, 
+        sample_rate,
+        hop_size,
+        f0_factor = 1.0,
+        dense_factors=[0.5, 1, 4, 8],
+        upsample_scales=[8, 4, 2, 2],
+        sine_amp=0.1,
+        noise_amp=0.003,
+        signal_types=["sine"],
+        ):
+        self.dense_factors = dense_factors
+        self.prod_upsample_scales = np.cumprod(upsample_scales)
+        self.sample_rate = sample_rate
+        self.signal_generator = SignalGenerator(
+            sample_rate=sample_rate,
+            hop_size=hop_size,
+            sine_amp=sine_amp,
+            noise_amp=noise_amp,
+            signal_types=signal_types,
+        )
+        self.f0_factor = f0_factor
+
 
     def __call__(self, batch):
         """Collate's training batch from normalized text, audio and speaker identities
         PARAMS
         ------
-        batch: [text_normalized, spec_normalized, wav_normalized, sid]
+        batch: [text_normalized, spec_normalized, wav_normalized, sid, note]
         """
-        # Right zero-pad all one-hot text sequences to max input length
-        _, ids_sorted_decreasing = torch.sort(
-            torch.LongTensor([x[1].size(1) for x in batch]),
-            dim=0, descending=True)
 
-        max_text_len = max([len(x[0]) for x in batch])
-        max_spec_len = max([x[1].size(1) for x in batch])
-        max_wav_len = max([x[2].size(1) for x in batch])
-
-        text_lengths = torch.LongTensor(len(batch))
         spec_lengths = torch.LongTensor(len(batch))
-        wav_lengths = torch.LongTensor(len(batch))
         sid = torch.LongTensor(len(batch))
-
-        text_padded = torch.LongTensor(len(batch), max_text_len)
-        spec_padded = torch.FloatTensor(len(batch), batch[0][1].size(0), max_spec_len)
-        wav_padded = torch.FloatTensor(len(batch), 1, max_wav_len)
-        text_padded.zero_()
+        spec_padded = torch.FloatTensor(len(batch), batch[0][0].size(0), batch[0][0].size(1))
+        f0_padded = torch.FloatTensor(len(batch), 1, batch[0][2].size(0))
+        #返り値の初期化
         spec_padded.zero_()
-        wav_padded.zero_()
-        for i in range(len(ids_sorted_decreasing)):
-            row = batch[ids_sorted_decreasing[i]]
+        f0_padded.zero_()
 
-            spec = row[1]
+        #dfs
+        dfs_batch = [[] for _ in range(len(self.dense_factors))]
+
+        #row spec, sid, f0
+        for i in range(len(batch)):
+            row = batch[i]
+
+            spec = row[0]
             spec_padded[i, :, :spec.size(1)] = spec
             spec_lengths[i] = spec.size(1)
 
-            wav = row[2]
-            wav_padded[i, :, :wav.size(1)] = wav
-            wav_lengths[i] = wav.size(1)
+            sid[i] = row[1]
+            #推論時 f0/cf0にf0の倍率を乗算してf0/cf0を求める
+            f0 = row[2] * self.f0_factor
+            f0_padded[i, :, :f0.size(0)] = f0
 
-            sid[i] = row[3]
+            #dfs
+            dfs = []
+            #dilated_factor の入力はnumpy!!
+            for df, us in zip(self.dense_factors, self.prod_upsample_scales):
+                dfs += [
+                        np.repeat(dilated_factor(torch.unsqueeze(f0, dim=1).to('cpu').detach().numpy(), self.sample_rate, df), us)
+                    ]
+            
+            #よくわからないけど、後で論文ちゃんと読む
+            for i in range(len(self.dense_factors)):
+                dfs_batch[i] += [
+                    dfs[i].astype(np.float32).reshape(-1, 1)
+                ]  # [(T', 1), ...]
+        #よくわからないdfsを転置
+        for i in range(len(self.dense_factors)):
+            dfs_batch[i] = torch.FloatTensor(np.array(dfs_batch[i])).transpose(
+                2, 1
+            )  # (B, 1, T')
+        
+        #f0/cf0を実際に使うSignalに変換する
+        in_batch = self.signal_generator(f0_padded)
 
-        if self.return_ids:
-            return text_padded, text_lengths, spec_padded, spec_lengths, wav_padded, wav_lengths, sid, ids_sorted_decreasing
-        return text_padded, text_lengths, spec_padded, spec_lengths, wav_padded, wav_lengths, sid
+        return spec_padded, spec_lengths, sid, in_batch, dfs_batch
 
 class MockStream:
     """
