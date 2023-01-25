@@ -16,10 +16,12 @@ from logging import getLogger
 
 import torch
 import torch.nn as nn
-from sifigan.layers import AdaptiveResidualBlock, Conv1d, ResidualBlock
+from residual_block import AdaptiveResidualBlock, Conv1d, ResidualBlock
 
 # A logger for this file
 logger = getLogger(__name__)
+
+
 
 class SiFiGANGenerator(nn.Module):
     """SiFiGAN generator module."""
