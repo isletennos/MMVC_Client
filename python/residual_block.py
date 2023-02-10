@@ -16,8 +16,8 @@ from logging import getLogger
 
 import torch
 import torch.nn as nn
-from sifigan.layers import Snake
-from sifigan.utils import index_initial, pd_indexing
+from snake import Snake
+from index import index_initial, pd_indexing
 
 # A logger for this file
 logger = getLogger(__name__)
