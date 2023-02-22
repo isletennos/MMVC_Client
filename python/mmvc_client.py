@@ -360,6 +360,17 @@ class Hyperparameters():
                         {
                             "specs": spec.numpy(),
                             "lengths": spec_lengths.numpy(),
+    # dummy_sin = torch.rand(1, 1, 8192)
+    # #dummy_d = [torch.rand(1, 1, 512), torch.rand(1, 1, 2048), torch.rand(1, 1, 4096), torch.rand(1, 1, 8192)]
+    # dummy_d0 = torch.rand(1, 1, 512)
+    # dummy_d1 = torch.rand(1, 1, 2048)
+    # dummy_d2 = torch.rand(1, 1, 4096)
+    # dummy_d3 = torch.rand(1, 1, 8192)
+                            "sin": sin.numpy(),
+                            "d0": d[0].numpy(),
+                            "d1": d[1].numpy(),
+                            "d2": d[2].numpy(),
+                            "d3": d[3].numpy(),
                             "sid_src": sid_src.numpy(),
                             "sid_tgt": sid_target.numpy()
                         })[0][0,0]

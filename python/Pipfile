@@ -9,13 +9,15 @@ verify_ssl = true
 name = "downloadpytorch"
 
 [packages]
-torch = {version = "==1.8.1+cu111", index = "downloadpytorch"}
+torch = {version = "==1.10.1+cu111", index = "downloadpytorch"}
 noisereduce = "==2.0.0"
-numpy = "==1.21.1"
 scikit-learn = "==1.0.2"
 sounddevice = "==0.4.4"
 SoundFile = "==0.10.3.post1"
-onnxruntime-directml = "1.13.1"
+numpy = "~=1.23"
+protobuf = "~=3.20"
+pyworld = "==0.3.2"
+onnxruntime-directml = "==1.13.1"
 pyinstaller = "*"
 
 [dev-packages]
