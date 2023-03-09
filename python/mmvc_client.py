@@ -352,13 +352,14 @@ class Hyperparameters():
             )([(spec, sid, f0)])
 
             if Hyperparameters.USE_ONNX:
-                spec, spec_lengths, sid_src, sin, d = data
+                spec, f0, spec_lengths, sid_src = data
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 if spec.size()[2] >= 8:
                     audio = ort_session.run(
                         ["audio"],
                         {
                             "specs": spec.numpy(),
+                            "f0": f0.numpy(),
                             "lengths": spec_lengths.numpy(),
     # dummy_sin = torch.rand(1, 1, 8192)
     # #dummy_d = [torch.rand(1, 1, 512), torch.rand(1, 1, 2048), torch.rand(1, 1, 4096), torch.rand(1, 1, 8192)]
@@ -366,11 +367,11 @@ class Hyperparameters():
     # dummy_d1 = torch.rand(1, 1, 2048)
     # dummy_d2 = torch.rand(1, 1, 4096)
     # dummy_d3 = torch.rand(1, 1, 8192)
-                            "sin": sin.numpy(),
-                            "d0": d[0].numpy(),
-                            "d1": d[1].numpy(),
-                            "d2": d[2].numpy(),
-                            "d3": d[3].numpy(),
+                            #"sin": sin.numpy(),
+                            #"d0": d[0].numpy(),
+                            #"d1": d[1].numpy(),
+                            #"d2": d[2].numpy(),
+                            #"d3": d[3].numpy(),
                             "sid_src": sid_src.numpy(),
                             "sid_tgt": sid_target.numpy()
                         })[0][0,0]
@@ -379,7 +380,7 @@ class Hyperparameters():
             else:
                 if Hyperparameters.GPU_ID >= 0:
                     #spec, spec_lengths, sid_src, sin, d = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                    spec, spec_lengths, sid_src, sin, d = data
+                    spec, f0, spec_lengths, sid_src = data
                     spec = spec.cuda(Hyperparameters.GPU_ID)
                     spec_lengths = spec_lengths.cuda(Hyperparameters.GPU_ID)
                     sid_src = sid_src.cuda(Hyperparameters.GPU_ID)
