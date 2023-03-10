@@ -384,14 +384,14 @@ class Hyperparameters():
                     spec = spec.cuda(Hyperparameters.GPU_ID)
                     spec_lengths = spec_lengths.cuda(Hyperparameters.GPU_ID)
                     sid_src = sid_src.cuda(Hyperparameters.GPU_ID)
-                    sin = sin.cuda(Hyperparameters.GPU_ID)
-                    d = tuple([d[:1].cuda(Hyperparameters.GPU_ID) for d in d])
+                    #sin = sin.cuda(Hyperparameters.GPU_ID)
+                    #d = tuple([d[:1].cuda(Hyperparameters.GPU_ID) for d in d])
                     sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, f0, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
                 else:
                     spec, spec_lengths, sid_src, sin, d = data
                     sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    audio = net_g.voice_conversion(spec, f0, spec_lengths, sid_src, sid_target)[0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
             # 出力されたwavでconv1d paddingの影響受けるところを削る
