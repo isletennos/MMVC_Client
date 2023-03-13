@@ -1,5 +1,6 @@
 import copy
 import math
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -11,6 +12,7 @@ from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from commons import init_weights, get_padding
 from generator import SiFiGANGenerator
+from features import SignalGenerator, dilated_factor
 
 class TextEncoder(nn.Module):
   def __init__(self,
@@ -436,7 +438,6 @@ class SynthesizerTrn(nn.Module):
 
   def voice_conversion(self, y, y_lengths, f0, sid_src, sid_tgt):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
-
     sin, d = self.make_sin_d(f0)
     g_src = self.emb_g(sid_src).unsqueeze(-1)
     g_tgt = self.emb_g(sid_tgt).unsqueeze(-1)
