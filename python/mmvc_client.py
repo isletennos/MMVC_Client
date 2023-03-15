@@ -352,7 +352,7 @@ class Hyperparameters():
             )([(spec, sid, f0)])
 
             if Hyperparameters.USE_ONNX:
-                spec, spec_lengths, sid_src, sin, d = data
+                spec, spec_lengths, sid_src, f0 = data
                 sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                 if spec.size()[2] >= 8:
                     audio = ort_session.run(
@@ -360,17 +360,7 @@ class Hyperparameters():
                         {
                             "specs": spec.numpy(),
                             "lengths": spec_lengths.numpy(),
-    # dummy_sin = torch.rand(1, 1, 8192)
-    # #dummy_d = [torch.rand(1, 1, 512), torch.rand(1, 1, 2048), torch.rand(1, 1, 4096), torch.rand(1, 1, 8192)]
-    # dummy_d0 = torch.rand(1, 1, 512)
-    # dummy_d1 = torch.rand(1, 1, 2048)
-    # dummy_d2 = torch.rand(1, 1, 4096)
-    # dummy_d3 = torch.rand(1, 1, 8192)
-                            "sin": sin.numpy(),
-                            "d0": d[0].numpy(),
-                            "d1": d[1].numpy(),
-                            "d2": d[2].numpy(),
-                            "d3": d[3].numpy(),
+                            "f0": f0.numpy(),
                             "sid_src": sid_src.numpy(),
                             "sid_tgt": sid_target.numpy()
                         })[0][0,0]
@@ -379,18 +369,17 @@ class Hyperparameters():
             else:
                 if Hyperparameters.GPU_ID >= 0:
                     #spec, spec_lengths, sid_src, sin, d = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                    spec, spec_lengths, sid_src, sin, d = data
+                    spec, spec_lengths, sid_src, f0 = data
                     spec = spec.cuda(Hyperparameters.GPU_ID)
                     spec_lengths = spec_lengths.cuda(Hyperparameters.GPU_ID)
                     sid_src = sid_src.cuda(Hyperparameters.GPU_ID)
-                    sin = sin.cuda(Hyperparameters.GPU_ID)
-                    d = tuple([d[:1].cuda(Hyperparameters.GPU_ID) for d in d])
                     sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    f0 = f0.cuda(0)
+                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
                 else:
-                    spec, spec_lengths, sid_src, sin, d = data
+                    spec, spec_lengths, sid_src, f0 = data
                     sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-                    audio = net_g.voice_conversion(spec, spec_lengths, sin, d, sid_src, sid_target)[0,0].data.cpu().float().numpy()
+                    audio = net_g.voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
             # 出力されたwavでconv1d paddingの影響受けるところを削る
@@ -634,22 +623,11 @@ class TextAudioSpeakerCollate():
         f0_factor = 1.0,
         dense_factors=[0.5, 1, 4, 8],
         upsample_scales=[8, 4, 2, 2],
-        sine_amp=0.1,
-        noise_amp=0.003,
-        signal_types=["sine"],
         ):
         self.dense_factors = dense_factors
         self.prod_upsample_scales = np.cumprod(upsample_scales)
         self.sample_rate = sample_rate
-        self.signal_generator = SignalGenerator(
-            sample_rate=sample_rate,
-            hop_size=hop_size,
-            sine_amp=sine_amp,
-            noise_amp=noise_amp,
-            signal_types=signal_types,
-        )
         self.f0_factor = f0_factor
-
 
     def __call__(self, batch):
         """Collate's training batch from normalized text, audio and speaker identities
@@ -666,9 +644,6 @@ class TextAudioSpeakerCollate():
         spec_padded.zero_()
         f0_padded.zero_()
 
-        #dfs
-        dfs_batch = [[] for _ in range(len(self.dense_factors))]
-
         #row spec, sid, f0
         for i in range(len(batch)):
             row = batch[i]
@@ -682,29 +657,7 @@ class TextAudioSpeakerCollate():
             f0 = row[2] * self.f0_factor
             f0_padded[i, :, :f0.size(0)] = f0
 
-            #dfs
-            dfs = []
-            #dilated_factor の入力はnumpy!!
-            for df, us in zip(self.dense_factors, self.prod_upsample_scales):
-                dfs += [
-                        np.repeat(dilated_factor(torch.unsqueeze(f0, dim=1).to('cpu').detach().numpy(), self.sample_rate, df), us)
-                    ]
-            
-            #よくわからないけど、後で論文ちゃんと読む
-            for i in range(len(self.dense_factors)):
-                dfs_batch[i] += [
-                    dfs[i].astype(np.float32).reshape(-1, 1)
-                ]  # [(T', 1), ...]
-        #よくわからないdfsを転置
-        for i in range(len(self.dense_factors)):
-            dfs_batch[i] = torch.FloatTensor(np.array(dfs_batch[i])).transpose(
-                2, 1
-            )  # (B, 1, T')
-        
-        #f0/cf0を実際に使うSignalに変換する
-        in_batch = self.signal_generator(f0_padded)
-
-        return spec_padded, spec_lengths, sid, in_batch, dfs_batch
+        return spec_padded, spec_lengths, sid, f0_padded
 
 class MockStream:
     """
