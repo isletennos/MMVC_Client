@@ -281,8 +281,7 @@ class Hyperparameters():
             requires_grad_emb_g = self.hps.requires_grad.emb_g
             )
         _ = net_g.eval()
-        #暫定872000
-        _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
+
         return net_g
 
     #f0からcf0を推定する
@@ -314,6 +313,7 @@ class Hyperparameters():
         return f(np.arange(0, f0_size))
 
     def audio_trans(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
+        gpu_id = Hyperparameters.GPU_ID
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
     
@@ -350,35 +350,46 @@ class Hyperparameters():
                 hop_size = Hyperparameters.HOP_LENGTH,
                 f0_factor = F0_SCALE
             )([(spec, sid, f0)])
-
+            spec, spec_lengths, sid_src, f0 = data
+            sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
             if Hyperparameters.USE_ONNX:
-                spec, spec_lengths, sid_src, f0 = data
-                sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
+                sin, d = net_g.make_sin_d(f0)
+                (d0, d1, d2, d3) = d
+                #print(spec.size(), sin.size(), d0.size(), d1.size(), d2.size(), d3.size())
+                #print(d0)
+                #fixed_length = 73
+                #prod_upsample_scales = np.cumprod([8, 4, 2, 2])
+                #sin = torch.ones(1, 1, fixed_length * hop_length)
+                #d0  = torch.rand(1, 1, fixed_length * prod_upsample_scales[0])
+                #d1  = torch.rand(1, 1, fixed_length * prod_upsample_scales[1])
+                #d2  = torch.rand(1, 1, fixed_length * prod_upsample_scales[2])
+                #d3  = torch.rand(1, 1, fixed_length * prod_upsample_scales[3])
                 if spec.size()[2] >= 8:
                     audio = ort_session.run(
                         ["audio"],
                         {
                             "specs": spec.numpy(),
                             "lengths": spec_lengths.numpy(),
-                            "f0": f0.numpy(),
+                            "sin": sin.numpy(),
+                            "d0": d0.numpy(),
+                            "d1": d1.numpy(),
+                            "d2": d2.numpy(),
+                            "d3": d3.numpy(),
                             "sid_src": sid_src.numpy(),
                             "sid_tgt": sid_target.numpy()
                         })[0][0,0]
                 else:
                     audio = np.array([0.0]) # dummy
             else:
-                if Hyperparameters.GPU_ID >= 0:
-                    #spec, spec_lengths, sid_src, sin, d = [x.cuda(Hyperparameters.GPU_ID) for x in data]
-                    spec, spec_lengths, sid_src, f0 = data
-                    spec = spec.cuda(Hyperparameters.GPU_ID)
-                    spec_lengths = spec_lengths.cuda(Hyperparameters.GPU_ID)
-                    sid_src = sid_src.cuda(Hyperparameters.GPU_ID)
-                    sid_target = torch.LongTensor([target_id]).cuda(Hyperparameters.GPU_ID) # 話者IDはJVSの番号を100で割った余りです
-                    f0 = f0.cuda(0)
-                    audio = net_g.cuda(Hyperparameters.GPU_ID).voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
+                if gpu_id >= 0:
+                    #spec, spec_lengths, sid_src, sin, d = [x.cuda(gpu_id) for x in data]
+                    spec = spec.cuda(gpu_id)
+                    spec_lengths = spec_lengths.cuda(gpu_id)
+                    sid_src = sid_src.cuda(gpu_id)
+                    sid_target = sid_target.cuda(gpu_id) # 話者IDはJVSの番号を100で割った余りです
+                    f0 = f0.cuda(gpu_id)
+                    audio = net_g.cuda(gpu_id).voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
                 else:
-                    spec, spec_lengths, sid_src, f0 = data
-                    sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
                     audio = net_g.voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
@@ -417,19 +428,21 @@ class Hyperparameters():
     def vc_run(self):
         audio = pyaudio.PyAudio()
         print("モデルを読み込んでいます。少々お待ちください。")
-        net_g = None
+        net_g = self.launch_model()
         ort_session = None
         if Hyperparameters.USE_ONNX :
             # DirectMLで動かすための設定
             ort_options = ort.SessionOptions()
             ort_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             ort_options.enable_mem_pattern = False
+            #ort_options.enable_profiling = True
             ort_session = ort.InferenceSession(
                 Hyperparameters.MODEL_PATH,
                 sess_options=ort_options,
                 providers=Hyperparameters.ONNX_PROVIDERS)
         else:
-            net_g = self.launch_model()
+            _ = load_checkpoint(Hyperparameters.MODEL_PATH, net_g, None)
+
         print("モデルの読み込みが完了しました。音声の入出力の準備を行います。少々お待ちください。")
         tdbm = Transform_Data_By_Model()
 
@@ -509,26 +522,31 @@ class Hyperparameters():
                 voice_selector = VoiceSelector()
                 voice_selector.open_window()
 
-            prev_wav_tail = bytes(0)
-            in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-            trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, 0, 0, ort_session=ort_session) # 遅延減らすため初回だけpadding対策使わない
-            overlapped_wav = trans_wav
-            prev_trans_wav = trans_wav
-            if dispose_length + overlap_length != 0:
-                prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 次回の頭のデータとして終端データを保持する
-            if with_bgm:
-                back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
+            # in_wav: delay_frames * wav_bytes = 4096 * 2 = 8192
+            # prev_wav_tail: (dispose_length + overlap_length) * wav_bytes = (1536 + 128) * 2 = 3328
+            # prev_trans_wav: (delay_frames + overlap_length) * wav_bytes = (4096 + 128) * 2 = 8448
+            prev_wav_tail = bytes((dispose_length + overlap_length) * wav_bytes)
+            prev_trans_wav = bytes((delay_frames + overlap_length) * wav_bytes)
+            #prev_wav_tail = bytes(0)
+            #in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
+            #trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, 0, 0, ort_session=ort_session) # 遅延減らすため初回だけpadding対策使わない
+            #overlapped_wav = trans_wav
+            #prev_trans_wav = trans_wav
+            #if dispose_length + overlap_length != 0:
+            #    prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 次回の頭のデータとして終端データを保持する
+            #if with_bgm:
+            #    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
             while True:
-                audio_output_stream.write(overlapped_wav)
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
                 trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
+                audio_output_stream.write(overlapped_wav)
                 prev_trans_wav = trans_wav
                 if dispose_length + overlap_length != 0:
                     prev_wav_tail = in_wav[-((dispose_length + overlap_length) * wav_bytes):] # 今回の終端の捨てデータぶんだけ次回の頭のデータとして保持する
                 if with_bgm:
-                    back_audio_output_stream.write(back_in_raw)
                     back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow=False) # 背景BGMを取得
+                    back_audio_output_stream.write(back_in_raw)
 
                 if with_voice_selector and voice_selector_flag:
                     target_id = voice_selector.voice_select_id
@@ -548,6 +566,8 @@ class Hyperparameters():
             back_audio_output_stream.stop_stream()
             back_audio_output_stream.close()
             audio.terminate()
+            #prof_file = ort_session.end_profiling()
+            #print(prof_file)
             print("Stop Streaming")    
 
         if with_voice_selector and voice_selector_flag:
