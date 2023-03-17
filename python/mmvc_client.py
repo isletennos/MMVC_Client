@@ -2,6 +2,7 @@
 #use thread limit
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
 import sys
 import json
 import numpy as np
@@ -16,6 +17,7 @@ import noisereduce as nr
 #ファイルダイアログ関連
 import tkinter as tk #add
 from tkinter import filedialog #add
+import tkinter.ttk as ttk
 
 #user lib
 from models import SynthesizerTrn
@@ -27,6 +29,8 @@ import pyworld as pw
 from scipy.interpolate import interp1d
 from features import SignalGenerator, dilated_factor
 
+import pygame
+from pygame.locals import *
 
 def load_checkpoint(checkpoint_path, model, optimizer=None):
   assert os.path.isfile(checkpoint_path), f"No such file or directory: {checkpoint_path}"
@@ -134,6 +138,7 @@ class Hyperparameters():
     OUTPUT_FILENAME = None
     GPU_ID = 0
     Voice_Selector_Flag = None
+    Joystick_Selector_Flag = None
     USE_ONNX = None
     ONNX_PROVIDERS = None
     hps = None
@@ -208,6 +213,9 @@ class Hyperparameters():
     def set_Voice_Selector(self, value):
         Hyperparameters.Voice_Selector_Flag = value
 
+    def set_Joystick_Selector(self, value):
+        Hyperparameters.Joystick_Selector_Flag = value
+
     def set_USE_ONNX(self, value):
         Hyperparameters.USE_ONNX = value
 
@@ -251,6 +259,7 @@ class Hyperparameters():
             self.set_OUTPUT_FILENAME(profile.others.output_filename)
         self.set_GPU_ID(profile.device.gpu_id)
         self.set_Voice_Selector(profile.others.voice_selector)
+        self.set_Joystick_Selector(profile.others.joystick_selector)
         if hasattr(profile.vc_conf, "onnx"):
             self.set_USE_ONNX(profile.vc_conf.onnx.use_onnx)
             self.set_ONNX_PROVIDERS(profile.vc_conf.onnx.onnx_providers)
@@ -491,6 +500,7 @@ class Hyperparameters():
         with_bgm = (Hyperparameters.INPUT_DEVICE_2 != False)
         with_voice_selector = (Hyperparameters.INPUT_FILENAME == None) # 入力ファイルがない場合は音声選択ウィンドウあり
         voice_selector_flag = Hyperparameters.Voice_Selector_Flag # 音声選択ウィンドウの有無
+        joystick_selector_flag = Hyperparameters.Joystick_Selector_Flag # ジョイスティック操作の有無
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
@@ -506,7 +516,10 @@ class Hyperparameters():
         try:
             print("準備が完了しました。VC開始します。")
             if with_voice_selector and voice_selector_flag:
-                voice_selector = VoiceSelector()
+                if joystick_selector_flag:
+                    voice_selector = VoiceSelectorJoyStick()
+                else:
+                    voice_selector = VoiceSelector()
                 voice_selector.open_window()
 
             prev_wav_tail = bytes(0)
@@ -705,6 +718,100 @@ class MockStream:
         if self.fw != None:
             self.fw.close()
             self.fw = None
+
+class VoiceSelectorJoyStick():
+    def get_closure_combobox_on_selected(self):
+
+        def on_selected(event):
+            value = event.widget.get()
+            id = self.joystick_names.index(value)
+            # ジョイスティックインスタンスの生成
+            self.joystick = pygame.joystick.Joystick(id)
+            self.joystick.init()
+            print('ジョイスティックの名前:', self.joystick.get_name())
+            print('ボタン数 :', self.joystick.get_numbuttons())
+
+        return on_selected
+
+    def get_closure_button_on_click(self, button, id):
+
+        def on_click(event):
+            if self.selected_button != button:
+                self.selected_button = button
+            else: 
+                i = self.button_list.index(self.selected_button)
+                self.joystick_button_list[i] = None
+                self.selected_button = None
+
+        return on_click
+
+    def open_window(self):
+        self.voice_ids = Hyperparameters.VOICE_LIST
+        self.voice_labels = Hyperparameters.VOICE_LABEL
+        self.voice_select_id = self.voice_ids[0]
+
+        self.joystick_button_list = [None] * len(self.voice_ids)
+
+        self.root_win = tk.Tk()
+        height = int(len(self.voice_ids) * 30)
+        self.root_win.geometry(f"200x{height}")
+        self.root_win.title("MMVC Client")
+        self.root_win.protocol("WM_DELETE_WINDOW", self.close_window)
+
+        pygame.joystick.init()
+        self.joystick_names = list(map(lambda i: str(i) + ": " + pygame.joystick.Joystick(i).get_name(), range(pygame.joystick.get_count())))
+        self.combobox = ttk.Combobox ( self.root_win , values = self.joystick_names)
+        self.combobox.pack()
+        combobox_on_selected = self.get_closure_combobox_on_selected()
+        self.combobox.bind("<<ComboboxSelected>>", combobox_on_selected)
+
+        self.button_list = []
+        self.selected_button = None
+        self.voice_select_id = self.voice_ids[0]
+
+        for voice_id, voice_label in zip(self.voice_ids, self.voice_labels):
+            button = tk.Button(self.root_win, text=f"{voice_label}")
+            button_on_click = self.get_closure_button_on_click(button, voice_id)
+            button.bind("<Button-1>", button_on_click)
+            button.pack()
+            self.button_list.append(button)
+
+        pygame.init()
+    
+    def update_window(self):
+        for e in pygame.event.get():
+            # 終了ボタン
+            if e.type == pygame.QUIT:
+                Hyperparameters.VC_END_FLAG = True
+                return
+            # ジョイスティックのボタンの入力
+            elif e.type == pygame.locals.JOYBUTTONDOWN:
+                # ボタン割り当てモード
+                if self.selected_button is not None:
+                    self.joystick_button_list = list(map(lambda button_id: (None if button_id == e.button else button_id), self.joystick_button_list ))
+                    i = self.button_list.index(self.selected_button)
+                    self.joystick_button_list[i] = e.button
+                    for i, button in enumerate(self.button_list):
+                        button["text"] = ("" if self.joystick_button_list[i] is None else "[" + str(self.joystick_button_list[i]) + "] ") + self.voice_labels[i]
+                    self.selected_button = None
+                # 通常のボタンでの話者切り替えモード
+                if e.button in self.joystick_button_list:
+                    self.voice_select_id = self.voice_ids[self.joystick_button_list.index(e.button)]
+                    print(self.voice_labels[self.joystick_button_list.index(e.button)])
+
+        for i, button in enumerate(self.button_list):
+            if button == self.selected_button:
+                button.config(fg="blue")
+            elif i == self.voice_ids.index(self.voice_select_id):
+                button.config(fg="red")
+            else:
+                button.config(fg="black")
+        
+        self.root_win.update()
+
+    def close_window(self):
+        Hyperparameters.VC_END_FLAG = True
+
 
 class VoiceSelector():
     def get_closure(self, button, id):
