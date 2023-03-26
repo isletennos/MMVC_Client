@@ -39,20 +39,18 @@ https://github.com/isletennos/MMVC_Trainer
 また、下記.exeの実行を.pyの実行に置き換えて実行してください。  
 
 ## Usage
-
 ### 1. 使用可能なオーディオデバイス一覧の取得
 「output_audio_device_list.exe」を実行します。  
 「audio_device_list.txt」が実行ファイルと同じディレクトリに出力されます。  
 こちらに入出力のオーディオデバイス名およびIDが出力されており、下記セクション以降で利用します。  
-
 ### 2. myprofile.confの書き換え
-conf/myprofile.confの下記項目を環境に合わせて変更します。  
+myprofile.confの下記項目を環境に合わせて変更します。  
 ```
   "device": {
     "input_device1": "マイク (Realtek(R) Audio), MME",
     "input_device2": false,
     "output_device": "スピーカー (Realtek(R) Audio), MME",
-    "gpu_id": 0
+    "gpu_id":0
   },
 ```
 
@@ -63,8 +61,8 @@ conf/myprofile.confの下記項目を環境に合わせて変更します。
     "overlap": 1024,
     "dispose_stft_specs": 2,
     "dispose_conv1d_specs": 10,
-    "source_id": 107,
-    "target_id": 100,
+    "source_id": 0,
+    "target_id": 101,
     "onnx": {
       "use_onnx": true,
       "onnx_providers": ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -82,10 +80,10 @@ conf/myprofile.confの下記項目を環境に合わせて変更します。
 
 ```
   "others": {
-    "use_nr": false,
-    "voice_selector": false,
-    "voice_list": [100, 108, 107, 6, 30, 108],
-    "voice_label": ["ずんだもん", "目標話者", "自分の声", "女性の声", "男性の低い声", "女性の高い声"]
+    "use_nr":false,
+    "voice_selector":false,
+    "voice_list": [101, 108, 6, 30],
+    "voice_label": ["ずんだもん", "目標話者", "女性の声", "男性の低い声"]
   }
 ```
 ### 2.1 myprofile.confの書き換え(device)
@@ -95,7 +93,7 @@ conf/myprofile.confの下記項目を環境に合わせて変更します。
     "input_device1": "マイク (Realtek(R) Audio), MME",
     "input_device2": false,
     "output_device": "スピーカー (Realtek(R) Audio), MME",
-    "gpu_id": 0
+    "gpu_id":0
   },
 ```
 各要素はそれぞれ  
@@ -110,8 +108,7 @@ conf/myprofile.confの下記項目を環境に合わせて変更します。
 
 
 **gpu_id : 複数GPUをPCに搭載している場合、数字で指定できます。**  
-使い分けが不要な場合は0のまま変更は不要です。  
-ONNXを利用しない設定にして、gpu_idを -1 に指定すると、torchでCPUでの変換になります。
+使い分けが不要な場合は0のまま変更は不要です。 
 
 ### 2.2 myprofile.confの書き換え(vc_conf)
 このセクションでは、下記項目の変更方法について記載します。  
@@ -122,8 +119,8 @@ ONNXを利用しない設定にして、gpu_idを -1 に指定すると、torch�
     "overlap": 1024,
     "dispose_stft_specs": 2,
     "dispose_conv1d_specs": 10,
-    "source_id": 107,
-    "target_id": 100,
+    "source_id": 0,
+    "target_id": 101,
     "onnx": {
       "use_onnx": true,
       "onnx_providers": ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -136,7 +133,7 @@ Trainerで特に弄っていなければ、107のままで問題ありません�
 
 **target_id : 変換先の音声の話者IDになります。**  
 学習時に生成した「./filelists/train_config_Correspondence.txt」を参考に話者IDを指定してください。  
-チュートリアルもんであれば100のままで問題ありません。  
+チュートリアルもんであれば101のままで問題ありません。  
 
 **onnx.use_onnx : 変換にONNXを使うか指定します。**  
 ONNXを使って変換する場合trueにします。  
@@ -160,7 +157,6 @@ ONNXを利用する場合、学習したモデルは「～.onnx」形式のフ�
     "noise": ".\\noise.wav"
   },
 ```
-
 **※ここで指定するパスは必ず「\」ではなく「\\\\」で区切ってください。**  
 
 学習済みフォルダ内に config.json, G_latest_99999999.pth, G_latest_99999999.onnx 等のファイルがあります。  
@@ -180,10 +176,10 @@ ONNXを使って変換する場合は ./logs/xxxx/G_xxxx.onnx といったONNX�
 このセクションでは、下記項目の変更方法について記載します。  
 ```
   "others": {
-    "use_nr": false,
-    "voice_selector": false,
-    "voice_list": [100, 108, 107, 6, 30, 108],
-    "voice_label": ["ずんだもん", "目標話者", "自分の声", "女性の声", "男性の低い声", "女性の高い声"]
+    "use_nr":false,
+    "voice_selector":false,
+    "voice_list": [101, 108, 6, 30],
+    "voice_label": ["ずんだもん", "目標話者", "女性の声", "男性の低い声"]
   }
 ```
 各要素はそれぞれ  
@@ -202,13 +198,24 @@ ONNXを使って変換する場合は ./logs/xxxx/G_xxxx.onnx といったONNX�
 
 **voice_label : voice_selectorを有効化したときに利用する項目です。話者IDのラベルになります。**  
 
+
+**input_filename : .wavファイルに対して音声変換したいときに利用する項目です。**
+デフォルトでは.confファイルに記入されていません。
+    "input_filename": ".\\emotion059.wav",
+のように入力する.wavファイルのパスを指定します。
+**output_filename : .wavファイルに対して音声変換したいときに利用する項目です。**
+デフォルトでは.confファイルに記入されていません。
+    "output_filename": ".\\trans_emotion059.wav"
+のように、変換結果の保存先とファイル名となる.wavファイルのパスを指定します。
+  
+
 ### 3. ソフトウェアの起動
 パターン1
-「mmvc_client.bat」を実行  
+「mmvc_client_GPU.bat」を実行  
 正しく「myprofile.conf」が設定されていればそのまま起動します。
 
 パターン2
-「bin\\mmvc_client.exe」を実行してください。  
+「mmvc_client_GPU.exe」を実行してください。  
 起動に少しだけ時間がかかります。  
 起動すると「myprofile.conf」のパスを聞かれるので、パスを指定して下さい。  
 
@@ -220,7 +227,7 @@ ONNXを使って変換する場合は ./logs/xxxx/G_xxxx.onnx といったONNX�
 次にmyprofile.confのパスを聞かれるため、編集したmyprofile.confのパスを入力してください。  
 以下の入力パスの例のように、.confファイルまで含めて入力して下さい。  
 ```
-.\conf\myprofile.conf
+D:\mmvc_client_GPU\myprofile.conf
 ```
 ※注意として、入力パスの両端に”（ダブルクォーテーション）は付けないでください。  
 パスの入力とmyprofile.confに問題が無ければ、ノイズの録音が開始されます。  
@@ -230,19 +237,18 @@ ONNXを使って変換する場合は ./logs/xxxx/G_xxxx.onnx といったONNX�
 ####  2. myprofile.confの書き換え
 ```
   "path": {
-  "path": {
     "json": ".\\logs\\20220306_24000\\config.json",
     "model": ".\\logs\\20220306_24000\\G_latest_99999999.onnx",
     "noise": ".\\noise.wav"
-  },
+  }
 ```
 上記項目の"noise"に 1. ノイズ音取得の実行 で作成した「noise.wav」のパスを入力します。  
 ```
   "others": {
-    "use_nr": true,
-    "voice_selector": false,
-    "voice_list": [100, 108, 107, 6, 30, 108],
-    "voice_label": ["ずんだもん", "目標話者", "自分の声", "女性の声", "男性の低い声", "女性の高い声"]
+    "use_nr":false,
+    "voice_selector":false,
+    "voice_list": [101, 108, 6, 30],
+    "voice_label": ["ずんだもん", "目標話者", "女性の声", "男性の低い声"]
   }
 ```
 上記項目の"use_nr"をtrueに変えます。  
