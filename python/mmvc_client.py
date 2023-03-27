@@ -278,7 +278,14 @@ class Hyperparameters():
             requires_grad_flow = self.hps.requires_grad.flow,
             requires_grad_text_enc = self.hps.requires_grad.text_enc,
             requires_grad_dec = self.hps.requires_grad.dec,
-            requires_grad_emb_g = self.hps.requires_grad.emb_g
+            requires_grad_emb_g = self.hps.requires_grad.emb_g,
+            sample_rate = self.hps.data.sampling_rate,
+            hop_size = self.hps.data.hop_length,
+            sine_amp = self.hps.data.sine_amp,
+            noise_amp = self.hps.data.noise_amp,
+            signal_types = self.hps.data.signal_types,
+            dense_factors = self.hps.data.dense_factors,
+            upsample_scales = self.hps.model.upsample_rates,
             )
         _ = net_g.eval()
 
@@ -348,6 +355,8 @@ class Hyperparameters():
             data = TextAudioSpeakerCollate(
                 sample_rate = Hyperparameters.SAMPLE_RATE,
                 hop_size = Hyperparameters.HOP_LENGTH,
+                dense_factors = self.hps.data.dense_factors,
+                upsample_scales = self.hps.model.upsample_rates,
                 f0_factor = F0_SCALE
             )([(spec, sid, f0)])
             spec, spec_lengths, sid_src, f0 = data
@@ -355,15 +364,6 @@ class Hyperparameters():
             if Hyperparameters.USE_ONNX:
                 sin, d = net_g.make_sin_d(f0)
                 (d0, d1, d2, d3) = d
-                #print(spec.size(), sin.size(), d0.size(), d1.size(), d2.size(), d3.size())
-                #print(d0)
-                #fixed_length = 73
-                #prod_upsample_scales = np.cumprod([8, 4, 2, 2])
-                #sin = torch.ones(1, 1, fixed_length * hop_length)
-                #d0  = torch.rand(1, 1, fixed_length * prod_upsample_scales[0])
-                #d1  = torch.rand(1, 1, fixed_length * prod_upsample_scales[1])
-                #d2  = torch.rand(1, 1, fixed_length * prod_upsample_scales[2])
-                #d3  = torch.rand(1, 1, fixed_length * prod_upsample_scales[3])
                 if spec.size()[2] >= 8:
                     audio = ort_session.run(
                         ["audio"],
