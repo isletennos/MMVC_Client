@@ -20,8 +20,8 @@ from tkinter import filedialog #add
 #user lib
 from models import SynthesizerTrn
 
-#後でconfigで指定できるようにするパラメータ
-F0_SCALE = 1.0
+#remove F0_SCALE
+
 import time
 import pyworld as pw
 from scipy.interpolate import interp1d
@@ -112,9 +112,11 @@ class Hyperparameters():
     FLAME_LENGTH = None
     SOURCE_ID = None
     TARGET_ID = None
+    F0_SCALE = None
     USE_NR = None
     VOICE_LIST = None
     VOICE_LABEL = None
+    VOICE_F0 = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -175,6 +177,9 @@ class Hyperparameters():
     def set_TARGET_ID(self, value):
         Hyperparameters.TARGET_ID = value
 
+    def set_F0_SCALE(self, value):
+        Hyperparameters.F0_SCALE = value
+
     def set_OVERLAP(self, value):
         Hyperparameters.OVERLAP = value
 
@@ -186,6 +191,9 @@ class Hyperparameters():
 
     def set_VOICE_LABEL(self, value):
         Hyperparameters.VOICE_LABEL = value
+
+    def set_VOICE_F0(self, value):
+        Hyperparameters.VOICE_F0 = value
 
     def set_DELAY_FLAMES(self, value):
         Hyperparameters.DELAY_FLAMES = value
@@ -238,10 +246,12 @@ class Hyperparameters():
         self.set_FLAME_LENGTH(profile.vc_conf.frame_length)
         self.set_SOURCE_ID(profile.vc_conf.source_id)
         self.set_TARGET_ID(profile.vc_conf.target_id)
+        self.set_F0_SCALE(profile.vc_conf.f0_scale)
         self.set_OVERLAP(profile.vc_conf.overlap)
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
         self.set_VOICE_LABEL(profile.others.voice_label)
+        self.set_VOICE_F0(profile.others.voice_f0)
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
         self.set_DISPOSE_STFT_SPECS(profile.vc_conf.dispose_stft_specs)
         self.set_DISPOSE_CONV1D_SPECS(profile.vc_conf.dispose_conv1d_specs)
@@ -319,7 +329,7 @@ class Hyperparameters():
         f = interp1d(nz_frames, cf0[nz_frames], bounds_error=False, fill_value=0.0)
         return f(np.arange(0, f0_size))
 
-    def audio_trans(self, tdbm, input, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
+    def audio_trans(self, tdbm, input, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         gpu_id = Hyperparameters.GPU_ID
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
@@ -357,7 +367,7 @@ class Hyperparameters():
                 hop_size = Hyperparameters.HOP_LENGTH,
                 dense_factors = self.hps.data.dense_factors,
                 upsample_scales = self.hps.model.upsample_rates,
-                f0_factor = F0_SCALE
+                f0_factor = f0_scale
             )([(spec, sid, f0)])
             spec, spec_lengths, sid_src, f0 = data
             sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
@@ -507,6 +517,7 @@ class Hyperparameters():
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
         target_id = Hyperparameters.TARGET_ID
+        f0_scale = Hyperparameters.F0_SCALE
         wav_bytes = 2 # 1音声データあたりのデータサイズ(2bytes) (math.log2(max_wav_value)+1)/8 で算出してもよいけど
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_stft_specs = Hyperparameters.DISPOSE_STFT_SPECS
@@ -538,7 +549,7 @@ class Hyperparameters():
             #    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
             while True:
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
+                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
                 audio_output_stream.write(overlapped_wav)
                 prev_trans_wav = trans_wav
@@ -727,13 +738,14 @@ class MockStream:
             self.fw = None
 
 class VoiceSelector():
-    def get_closure(self, button, id):
+    def get_closure(self, button, id, f0):
 
         def on_click(event):
             button.config(fg="red")
             self.selected_button.config(fg="black")
             self.selected_button = button
             self.voice_select_id = id
+            self.voice_select_f0 = f0
             #print(f"voice select id: {id}")
 
         return on_click
@@ -741,6 +753,7 @@ class VoiceSelector():
     def open_window(self):
         self.voice_ids = Hyperparameters.VOICE_LIST
         self.voice_labels = Hyperparameters.VOICE_LABEL
+        self.voice_f0s = Hyperparameters.VOICE_F0
 
         self.root_win = tk.Tk()
         height = int(len(self.voice_ids) * 30)
@@ -751,13 +764,14 @@ class VoiceSelector():
         self.button_list = []
         self.selected_button = None
         self.voice_select_id = self.voice_ids[0]
+        self.voice_select_f0 = self.voice_f0s[0]
 
-        for voice_id, voice_label in zip(self.voice_ids, self.voice_labels):
+        for voice_id, voice_label, voice_f0 in zip(self.voice_ids, self.voice_labels, self.voice_f0s):
             button = tk.Button(self.root_win, text=f"{voice_label}")
             if voice_id == self.voice_select_id:
                 button.config(fg="red")
                 self.selected_button = button
-            button_on_click = self.get_closure(button, voice_id)
+            button_on_click = self.get_closure(button, voice_id, voice_f0)
             button.bind("<Button-1>", button_on_click)
             button.pack()
             self.button_list.append(button)
