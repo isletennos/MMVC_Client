@@ -388,9 +388,9 @@ class Hyperparameters():
                     sid_src = sid_src.cuda(gpu_id)
                     sid_target = sid_target.cuda(gpu_id) # 話者IDはJVSの番号を100で割った余りです
                     f0 = f0.cuda(gpu_id)
-                    audio = net_g.cuda(gpu_id).voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
+                    audio = net_g.cuda(gpu_id).voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0,0].data.cpu().float().numpy()
                 else:
-                    audio = net_g.voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0][0,0].data.cpu().float().numpy()
+                    audio = net_g.voice_conversion(spec, spec_lengths, f0, sid_src, sid_target)[0,0].data.cpu().float().numpy()
 
         if dispose_conv1d_specs != 0:
             # 出力されたwavでconv1d paddingの影響受けるところを削る
