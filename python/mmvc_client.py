@@ -128,7 +128,6 @@ class Hyperparameters():
     USE_NR = None
     VOICE_LIST = None
     VOICE_LABEL = None
-    VOICE_F0 = None
     #jsonから取得
     SAMPLE_RATE = None
     MAX_WAV_VALUE = None
@@ -207,9 +206,6 @@ class Hyperparameters():
     def set_VOICE_LABEL(self, value):
         Hyperparameters.VOICE_LABEL = value
 
-    def set_VOICE_F0(self, value):
-        Hyperparameters.VOICE_F0 = value
-
     def set_DELAY_FLAMES(self, value):
         Hyperparameters.DELAY_FLAMES = value
 
@@ -267,7 +263,6 @@ class Hyperparameters():
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
         self.set_VOICE_LABEL(profile.others.voice_label)
-        self.set_VOICE_F0(profile.others.voice_f0)
         self.set_DELAY_FLAMES(profile.vc_conf.delay_flames)
         self.set_DISPOSE_STFT_SPECS(profile.vc_conf.dispose_stft_specs)
         self.set_DISPOSE_CONV1D_SPECS(profile.vc_conf.dispose_conv1d_specs)
@@ -380,7 +375,7 @@ class Hyperparameters():
                 f0 = f0[dispose_stft_specs:-dispose_stft_specs]
             sid_src = sid
             sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-            f0_factor = tdbm.get_f0_scale(sid_src, sid_target)
+            f0_factor = tdbm.get_f0_scale(sid_src, sid_target) * f0_scale
             spec = spec.unsqueeze(0)
             spec_lengths = torch.tensor([spec.size(2)])
             f0 = (f0 * f0_factor).unsqueeze(0).unsqueeze(0)
@@ -714,14 +709,13 @@ class MockStream:
             self.fw = None
 
 class VoiceSelector():
-    def get_closure(self, button, id, f0):
+    def get_closure(self, button, id):
 
         def on_click(event):
             button.config(fg="red")
             self.selected_button.config(fg="black")
             self.selected_button = button
             self.voice_select_id = id
-            self.voice_select_f0 = f0
             #print(f"voice select id: {id}")
 
         return on_click
@@ -729,7 +723,6 @@ class VoiceSelector():
     def open_window(self):
         self.voice_ids = Hyperparameters.VOICE_LIST
         self.voice_labels = Hyperparameters.VOICE_LABEL
-        self.voice_f0s = Hyperparameters.VOICE_F0
 
         self.root_win = tk.Tk()
         height = int(len(self.voice_ids) * 30)
@@ -740,14 +733,13 @@ class VoiceSelector():
         self.button_list = []
         self.selected_button = None
         self.voice_select_id = self.voice_ids[0]
-        self.voice_select_f0 = self.voice_f0s[0]
 
-        for voice_id, voice_label, voice_f0 in zip(self.voice_ids, self.voice_labels, self.voice_f0s):
+        for voice_id, voice_label in zip(self.voice_ids, self.voice_labels):
             button = tk.Button(self.root_win, text=f"{voice_label}")
             if voice_id == self.voice_select_id:
                 button.config(fg="red")
                 self.selected_button = button
-            button_on_click = self.get_closure(button, voice_id, voice_f0)
+            button_on_click = self.get_closure(button, voice_id)
             button.bind("<Button-1>", button_on_click)
             button.pack()
             self.button_list.append(button)
