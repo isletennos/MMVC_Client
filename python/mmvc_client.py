@@ -380,10 +380,9 @@ class Hyperparameters():
                 f0 = f0[dispose_stft_specs:-dispose_stft_specs]
             sid_src = sid
             sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
-            f0_factor = tdbm.get_f0_scale(sid_src, sid_target)
             spec = spec.unsqueeze(0)
             spec_lengths = torch.tensor([spec.size(2)])
-            f0 = (f0 * f0_factor).unsqueeze(0).unsqueeze(0)
+            f0 = (f0 * f0_scale).unsqueeze(0).unsqueeze(0)
             if Hyperparameters.USE_ONNX:
                 sin, d = net_g.make_sin_d(f0)
                 (d0, d1, d2, d3) = d
@@ -529,7 +528,9 @@ class Hyperparameters():
         voice_selector_flag = Hyperparameters.Voice_Selector_Flag # 音声選択ウィンドウの有無
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
+        source_id = Hyperparameters.SOURCE_ID
         target_id = Hyperparameters.TARGET_ID
+        target_f0_scale = 1.0
         f0_scale = Hyperparameters.F0_SCALE
         wav_bytes = 2 # 1音声データあたりのデータサイズ(2bytes) (math.log2(max_wav_value)+1)/8 で算出してもよいけど
         hop_length = Hyperparameters.HOP_LENGTH
@@ -561,8 +562,9 @@ class Hyperparameters():
             #if with_bgm:
             #    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
             while True:
+                f0_factor = tdbm.get_f0_scale(source_id, target_id) * f0_scale * target_f0_scale
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
+                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, f0_factor, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
                 audio_output_stream.write(overlapped_wav)
                 prev_trans_wav = trans_wav
@@ -574,6 +576,7 @@ class Hyperparameters():
 
                 if with_voice_selector and voice_selector_flag:
                     target_id = voice_selector.voice_select_id
+                    target_f0_scale = voice_selector.voice_select_f0
                     voice_selector.update_window()
 
                 if Hyperparameters.VC_END_FLAG: #エスケープ
