@@ -151,6 +151,7 @@ class Hyperparameters():
     Voice_Selector_Flag = None
     USE_ONNX = None
     ONNX_PROVIDERS = None
+    ORT_ENABLE_BASIC = None
     hps = None
 
     def set_input_device_1(self, value):
@@ -241,6 +242,8 @@ class Hyperparameters():
     def set_ONNX_PROVIDERS(self, value):
         Hyperparameters.ONNX_PROVIDERS = value
 
+    def set_ONNX_ORT_ENABLE_BASIC(self, value):
+        Hyperparameters.ORT_ENABLE_BASIC = value
 
     def set_profile(self, profile):
         sound_devices = sd.query_devices()
@@ -285,6 +288,10 @@ class Hyperparameters():
         if hasattr(profile.vc_conf, "onnx"):
             self.set_USE_ONNX(profile.vc_conf.onnx.use_onnx)
             self.set_ONNX_PROVIDERS(profile.vc_conf.onnx.onnx_providers)
+            if hasattr(profile.vc_conf.onnx, "ort_enable_basic"):
+                self.set_ONNX_ORT_ENABLE_BASIC(profile.vc_conf.onnx.ort_enable_basic)
+            else:
+                self.set_ONNX_ORT_ENABLE_BASIC(False)
 
     def launch_model(self):
         if self.hps.model.use_mel_train:
@@ -463,6 +470,8 @@ class Hyperparameters():
             ort_options = ort.SessionOptions()
             ort_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             ort_options.enable_mem_pattern = False
+            if Hyperparameters.ORT_ENABLE_BASIC:
+                ort_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC # https://kazuhito00.hatenablog.com/entry/2022/10/13/133248
             #ort_options.enable_profiling = True
             ort_session = ort.InferenceSession(
                 Hyperparameters.MODEL_PATH,
