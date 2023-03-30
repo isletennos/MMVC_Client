@@ -125,6 +125,7 @@ class Hyperparameters():
     SOURCE_ID = None
     TARGET_ID = None
     F0_SCALE = None
+    MIC_SCALE = None
     USE_NR = None
     VOICE_LIST = None
     VOICE_LABEL = None
@@ -195,6 +196,9 @@ class Hyperparameters():
     def set_F0_SCALE(self, value):
         Hyperparameters.F0_SCALE = value
 
+    def set_MIC_SCALE(self, value):
+        Hyperparameters.MIC_SCALE = value
+
     def set_OVERLAP(self, value):
         Hyperparameters.OVERLAP = value
 
@@ -263,6 +267,7 @@ class Hyperparameters():
         self.set_SOURCE_ID(profile.vc_conf.source_id)
         self.set_TARGET_ID(profile.vc_conf.target_id)
         self.set_F0_SCALE(profile.vc_conf.f0_scale)
+        self.set_MIC_SCALE(profile.vc_conf.mic_scale)
         self.set_OVERLAP(profile.vc_conf.overlap)
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
@@ -347,13 +352,14 @@ class Hyperparameters():
 
     def audio_trans(self, tdbm, input, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         gpu_id = Hyperparameters.GPU_ID
+        mic_scale = Hyperparameters.MIC_SCALE
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
     
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
-        signal = signal / Hyperparameters.MAX_WAV_VALUE
+        signal = signal * mic_scale / Hyperparameters.MAX_WAV_VALUE
         #F0推定テスト 5.5が奇跡的にぴったり
         _f0, _time = pw.dio(signal, Hyperparameters.SAMPLE_RATE,frame_period = 5.5)    # 基本周波数の抽出
         f0 = pw.stonemask(signal, _f0, _time, Hyperparameters.SAMPLE_RATE)  # 基本周波数の修正
