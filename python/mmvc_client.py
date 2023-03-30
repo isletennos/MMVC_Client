@@ -4,6 +4,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import sys
 import json
+import csv
 import numpy as np
 import torch
 import onnxruntime as ort
@@ -68,6 +69,16 @@ def get_hparams_from_file(config_path):
   return hparams
 
 
+def read_correspondence_file(filename, delimiter='|', newline='\n'):
+    data = {}
+    with open(filename, "r", encoding="utf-8", newline=newline) as f:
+        csv_reader = csv.reader(f, delimiter=delimiter)
+        for row in csv_reader:
+            sid = int(row[0])
+            f0 = float(row[1])
+            data[sid] = f0
+    return data
+
 class HParams():
   def __init__(self, **kwargs):
     for k, v in kwargs.items():
@@ -109,10 +120,12 @@ class Hyperparameters():
     CONFIG_JSON_PATH = None
     MODEL_PATH = None
     NOISE_FILE = None
+    CORRESPONDENCE_PATH = None
     FLAME_LENGTH = None
     SOURCE_ID = None
     TARGET_ID = None
     F0_SCALE = None
+    MIC_SCALE = None
     USE_NR = None
     VOICE_LIST = None
     VOICE_LABEL = None
@@ -168,6 +181,9 @@ class Hyperparameters():
     def set_NOISE_FILE(self, value):
         Hyperparameters.NOISE_FILE = value
 
+    def set_CORRESPONDENCE_PATH(self, value):
+        Hyperparameters.CORRESPONDENCE_PATH = value
+
     def set_FLAME_LENGTH(self, value):
         Hyperparameters.FLAME_LENGTH = value
 
@@ -179,6 +195,9 @@ class Hyperparameters():
 
     def set_F0_SCALE(self, value):
         Hyperparameters.F0_SCALE = value
+
+    def set_MIC_SCALE(self, value):
+        Hyperparameters.MIC_SCALE = value
 
     def set_OVERLAP(self, value):
         Hyperparameters.OVERLAP = value
@@ -243,10 +262,12 @@ class Hyperparameters():
         self.set_config_path(profile.path.json)
         self.set_model_path(profile.path.model)
         self.set_NOISE_FILE(profile.path.noise)
+        self.set_CORRESPONDENCE_PATH(profile.path.correspondence)
         self.set_FLAME_LENGTH(profile.vc_conf.frame_length)
         self.set_SOURCE_ID(profile.vc_conf.source_id)
         self.set_TARGET_ID(profile.vc_conf.target_id)
         self.set_F0_SCALE(profile.vc_conf.f0_scale)
+        self.set_MIC_SCALE(profile.vc_conf.mic_scale)
         self.set_OVERLAP(profile.vc_conf.overlap)
         self.set_USE_NR(profile.others.use_nr)
         self.set_VOICE_LIST(profile.others.voice_list)
@@ -331,13 +352,14 @@ class Hyperparameters():
 
     def audio_trans(self, tdbm, input, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=None):
         gpu_id = Hyperparameters.GPU_ID
+        mic_scale = Hyperparameters.MIC_SCALE
         hop_length = Hyperparameters.HOP_LENGTH
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
     
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
-        signal = signal / Hyperparameters.MAX_WAV_VALUE
+        signal = signal * mic_scale / Hyperparameters.MAX_WAV_VALUE
         #F0推定テスト 5.5が奇跡的にぴったり
         _f0, _time = pw.dio(signal, Hyperparameters.SAMPLE_RATE,frame_period = 5.5)    # 基本周波数の抽出
         f0 = pw.stonemask(signal, _f0, _time, Hyperparameters.SAMPLE_RATE)  # 基本周波数の修正
@@ -362,15 +384,11 @@ class Hyperparameters():
                 # wavもspecで削るぶんと同じだけ頭256と終256を削る
                 spec = spec[:, dispose_stft_specs:-dispose_stft_specs]
                 f0 = f0[dispose_stft_specs:-dispose_stft_specs]
-            data = TextAudioSpeakerCollate(
-                sample_rate = Hyperparameters.SAMPLE_RATE,
-                hop_size = Hyperparameters.HOP_LENGTH,
-                dense_factors = self.hps.data.dense_factors,
-                upsample_scales = self.hps.model.upsample_rates,
-                f0_factor = f0_scale
-            )([(spec, sid, f0)])
-            spec, spec_lengths, sid_src, f0 = data
+            sid_src = sid
             sid_target = torch.LongTensor([target_id]) # 話者IDはJVSの番号を100で割った余りです
+            spec = spec.unsqueeze(0)
+            spec_lengths = torch.tensor([spec.size(2)])
+            f0 = (f0 * f0_scale).unsqueeze(0).unsqueeze(0)
             if Hyperparameters.USE_ONNX:
                 sin, d = net_g.make_sin_d(f0)
                 (d0, d1, d2, d3) = d
@@ -516,7 +534,9 @@ class Hyperparameters():
         voice_selector_flag = Hyperparameters.Voice_Selector_Flag # 音声選択ウィンドウの有無
         delay_frames = Hyperparameters.DELAY_FLAMES
         overlap_length = Hyperparameters.OVERLAP
+        source_id = Hyperparameters.SOURCE_ID
         target_id = Hyperparameters.TARGET_ID
+        target_f0_scale = 1.0
         f0_scale = Hyperparameters.F0_SCALE
         wav_bytes = 2 # 1音声データあたりのデータサイズ(2bytes) (math.log2(max_wav_value)+1)/8 で算出してもよいけど
         hop_length = Hyperparameters.HOP_LENGTH
@@ -548,8 +568,9 @@ class Hyperparameters():
             #if with_bgm:
             #    back_in_raw = back_audio_input_stream.read(delay_frames, exception_on_overflow = False) # 背景BGMを取得
             while True:
+                f0_factor = tdbm.get_f0_scale(source_id, target_id) * f0_scale * target_f0_scale
                 in_wav = prev_wav_tail + audio_input_stream.read(delay_frames, exception_on_overflow=False)
-                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, f0_scale, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
+                trans_wav = self.audio_trans(tdbm, in_wav, net_g, noise_data, target_id, f0_factor, dispose_stft_specs, dispose_conv1d_specs, ort_session=ort_session)
                 overlapped_wav = self.overlap_merge(trans_wav,  prev_trans_wav, overlap_length)
                 audio_output_stream.write(overlapped_wav)
                 prev_trans_wav = trans_wav
@@ -561,6 +582,7 @@ class Hyperparameters():
 
                 if with_voice_selector and voice_selector_flag:
                     target_id = voice_selector.voice_select_id
+                    target_f0_scale = voice_selector.voice_select_f0
                     voice_selector.update_window()
 
                 if Hyperparameters.VC_END_FLAG: #エスケープ
@@ -591,9 +613,12 @@ class Transform_Data_By_Model():
     SAMPLE_RATE = 0
     HPS = None
     CONFIG = None
+    correspondence_dict = None 
+
     def __init__(self):
         self.G_HP = Hyperparameters()
         self.HPS = get_hparams_from_file(self.G_HP.CONFIG_JSON_PATH)
+        self.correspondence_dict = read_correspondence_file(self.G_HP.CORRESPONDENCE_PATH)
         #define samplerate
         self.SAMPLE_RATE =self.HPS.data.sampling_rate
         #define filter size
@@ -643,52 +668,12 @@ class Transform_Data_By_Model():
     def get_sid(self, sid):
         sid = torch.LongTensor([int(sid)])
         return sid
-
-class TextAudioSpeakerCollate():
-    """ Zero-pads model inputs and targets
-    """
-    def __init__(
-        self, 
-        sample_rate,
-        hop_size,
-        f0_factor = 1.0,
-        dense_factors=[0.5, 1, 4, 8],
-        upsample_scales=[8, 4, 2, 2],
-        ):
-        self.dense_factors = dense_factors
-        self.prod_upsample_scales = np.cumprod(upsample_scales)
-        self.sample_rate = sample_rate
-        self.f0_factor = f0_factor
-
-    def __call__(self, batch):
-        """Collate's training batch from normalized text, audio and speaker identities
-        PARAMS
-        ------
-        batch: [text_normalized, spec_normalized, wav_normalized, sid, note]
-        """
-
-        spec_lengths = torch.LongTensor(len(batch))
-        sid = torch.LongTensor(len(batch))
-        spec_padded = torch.FloatTensor(len(batch), batch[0][0].size(0), batch[0][0].size(1))
-        f0_padded = torch.FloatTensor(len(batch), 1, batch[0][2].size(0))
-        #返り値の初期化
-        spec_padded.zero_()
-        f0_padded.zero_()
-
-        #row spec, sid, f0
-        for i in range(len(batch)):
-            row = batch[i]
-
-            spec = row[0]
-            spec_padded[i, :, :spec.size(1)] = spec
-            spec_lengths[i] = spec.size(1)
-
-            sid[i] = row[1]
-            #推論時 f0/cf0にf0の倍率を乗算してf0/cf0を求める
-            f0 = row[2] * self.f0_factor
-            f0_padded[i, :, :f0.size(0)] = f0
-
-        return spec_padded, spec_lengths, sid, f0_padded
+    
+    def get_f0_scale(self, sid_src, sid_target):
+        src_f0 = self.correspondence_dict[int(sid_src)]
+        target_f0 = self.correspondence_dict[int(sid_target)]
+        f0_scale = target_f0 / src_f0
+        return torch.FloatTensor([f0_scale])
 
 class MockStream:
     """
