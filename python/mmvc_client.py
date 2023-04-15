@@ -361,8 +361,13 @@ class Hyperparameters():
         gpu_id = Hyperparameters.GPU_ID
         mic_scale = Hyperparameters.MIC_SCALE
         hop_length = Hyperparameters.HOP_LENGTH
+        delay_frames = Hyperparameters.DELAY_FLAMES
+        overlap_length = Hyperparameters.OVERLAP
         dispose_conv1d_length = dispose_conv1d_specs * hop_length
-    
+        dispose_specs =  dispose_stft_specs * 2 + dispose_conv1d_specs * 2
+        dispose_length = dispose_specs * hop_length
+        fixed_length = (delay_frames + dispose_length + overlap_length) // hop_length - dispose_stft_specs * 2
+
         # byte => torch
         signal = np.frombuffer(input, dtype='int16')
         #signal = torch.frombuffer(input, dtype=torch.float32)
@@ -397,24 +402,29 @@ class Hyperparameters():
             spec_lengths = torch.tensor([spec.size(2)])
             f0 = (f0 * f0_scale).unsqueeze(0).unsqueeze(0)
             if Hyperparameters.USE_ONNX:
+                if spec_lengths.numpy() != fixed_length: # 固定長に足りない場合は0パディング
+                    spec_padding_size = (1, spec.size(1), fixed_length - spec.size(2))
+                    spec_zero_padding = torch.zeros(spec_padding_size)
+                    spec = torch.cat([spec, spec_zero_padding], dim=2)
+                    f0_padding_size = (1, 1, fixed_length - f0.size(2))
+                    f0_zero_padding = torch.zeros(f0_padding_size)
+                    f0 = torch.cat([f0, f0_zero_padding], dim=2)
+                    spec_lengths = torch.tensor([spec.size(2)])
                 sin, d = net_g.make_sin_d(f0)
                 (d0, d1, d2, d3) = d
-                if spec.size()[2] >= 8:
-                    audio = ort_session.run(
-                        ["audio"],
-                        {
-                            "specs": spec.numpy(),
-                            "lengths": spec_lengths.numpy(),
-                            "sin": sin.numpy(),
-                            "d0": d0.numpy(),
-                            "d1": d1.numpy(),
-                            "d2": d2.numpy(),
-                            "d3": d3.numpy(),
-                            "sid_src": sid_src.numpy(),
-                            "sid_tgt": sid_target.numpy()
-                        })[0][0,0]
-                else:
-                    audio = np.array([0.0]) # dummy
+                audio = ort_session.run(
+                    ["audio"],
+                    {
+                        "specs": spec.numpy(),
+                        "lengths": spec_lengths.numpy(),
+                        "sin": sin.numpy(),
+                        "d0": d0.numpy(),
+                        "d1": d1.numpy(),
+                        "d2": d2.numpy(),
+                        "d3": d3.numpy(),
+                        "sid_src": sid_src.numpy(),
+                        "sid_tgt": sid_target.numpy()
+                    })[0][0,0]
             else:
                 if gpu_id >= 0:
                     #spec, spec_lengths, sid_src, sin, d = [x.cuda(gpu_id) for x in data]
